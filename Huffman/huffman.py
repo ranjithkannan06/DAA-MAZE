@@ -25,11 +25,6 @@ class Huffman:
         for char, freq in freqs.items():
             heapq.heappush(pq, HuffmanNode(char, freq))
             
-        if len(pq) == 1:
-            node = heapq.heappop(pq)
-            self.codes[node.char] = "0"
-            return node
-
         while len(pq) > 1:
             left = heapq.heappop(pq)
             right = heapq.heappop(pq)
@@ -37,21 +32,26 @@ class Huffman:
             heapq.heappush(pq, parent)
             
         root = heapq.heappop(pq)
-        self.codes = {}
         self.generate_codes(root, "")
         return root
 
-    def generate_codes(self, node, current_code):
-        if node is None:
+    def generate_codes(self, node, code):
+        if not node: return
+        if not node.left and not node.right:
+            self.codes[node.char] = code
             return
-        if node.char is not None:
-            self.codes[node.char] = current_code
-        self.generate_codes(node.left, current_code + "0")
-        self.generate_codes(node.right, current_code + "1")
+        self.generate_codes(node.left, code + "0")
+        self.generate_codes(node.right, code + "1")
 
-    def get_encoded_size(self, text):
+    def encode(self, text):
+        self.codes = {}
         self.build_tree(text)
-        size = 0
-        for char in text:
-            size += len(self.codes.get(char, ""))
-        return size
+        return "".join([self.codes[c] for c in text])
+    
+    def get_stats(self, text):
+        if not text: return {"original_bits": 0, "compressed_bits": 0, "ratio": 0}
+        encoded = self.encode(text)
+        original_bits = len(text) * 8
+        compressed_bits = len(encoded)
+        ratio = ((1 - compressed_bits / original_bits) * 100) if original_bits > 0 else 0
+        return {"original_bits": original_bits, "compressed_bits": compressed_bits, "ratio": round(ratio, 1)}
