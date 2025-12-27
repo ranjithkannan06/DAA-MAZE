@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/vidyadhar/Desktop/daa_ranjith/DAA-MAZE/main.py", line 952, in <module>
+    game.run()
+  File "/Users/vidyadhar/Desktop/daa_ranjith/DAA-MAZE/main.py", line 946, in run
+    sys.exit()
+SystemExit
+
+Exception: 
