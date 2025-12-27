@@ -1,8 +1,4 @@
-# =====================================
-# Contributor Name: Kamal
-# Topic: Main Frame
-# File: main.py
-# =====================================
+
 
 import sys
 import os
