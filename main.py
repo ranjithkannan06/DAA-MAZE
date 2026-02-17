@@ -6,7 +6,7 @@ from game_classes import Maze, Player
 from Huffman.huffman import Huffman
 from GBFS.Euclidean.euclidean import EuclideanAI
 from GBFS.Manhattan.manhattan import ManhattanAI
-from GBFS.Chebyshev.chebyshev import ChebyshevAI
+from GBFS.chebyshev.chebyshev import ChebyshevAI
 from HillClimbing.hill_climbing import HillClimbingAI
 from DFS.dfs import DFSAI
 from BFS.bfs import BFSAI
