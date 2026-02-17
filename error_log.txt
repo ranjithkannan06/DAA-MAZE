@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "d:\daa\DAA-MAZE\main.py", line 960, in <module>
+    game.run()
+    ~~~~~~~~^^
+  File "d:\daa\DAA-MAZE\main.py", line 954, in run
+    sys.exit()
+    ~~~~~~~~^^
+SystemExit
+
+Exception: 
