@@ -1,0 +1,290 @@
+:root {
+    --bg-primary: #0F0F1A;
+    --bg-secondary: #161625;
+    --card-bg: rgba(22, 22, 37, 0.9);
+    --accent-gold: #FFD700;
+    --accent-cyan: #00E5FF;
+    --accent-red: #FF2A68;
+    --accent-bronze: #4A4036;
+    --text-main: #E0E0E0;
+    --text-sub: #A0A0A0;
+    --border-color: #FFD700;
+    --glow-gold: 0 0 15px rgba(255, 215, 0, 0.3);
+    --glow-cyan: 0 0 15px rgba(0, 229, 255, 0.3);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Lato', sans-serif;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    background-image: radial-gradient(circle at center, #1a1a2e 0%, #0F0F1A 100%);
+}
+
+#game-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* HUD */
+#hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 70px;
+    background-color: rgba(15, 15, 26, 0.95);
+    border-bottom: 2px solid var(--accent-gold);
+    box-shadow: var(--glow-gold);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 30px;
+    z-index: 10;
+}
+
+#hud-left,
+#hud-right {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: var(--accent-cyan);
+    font-family: 'Cinzel', serif;
+}
+
+#hud-center {
+    font-size: 2.2em;
+    font-weight: bold;
+    color: var(--accent-gold);
+    text-shadow: var(--glow-gold);
+    letter-spacing: 3px;
+    font-family: 'Cinzel', serif;
+}
+
+#time-display {
+    color: var(--accent-red);
+}
+
+/* Canvas */
+#game-canvas {
+    background-color: var(--bg-secondary);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+    border: 3px solid var(--accent-bronze);
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 4px;
+}
+
+/* Metrics Panel */
+#metrics-panel {
+    position: absolute;
+    right: 20px;
+    top: 90px;
+    width: 280px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--accent-gold);
+    box-shadow: var(--glow-gold);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#metrics-panel h3 {
+    color: var(--accent-gold);
+    text-align: center;
+    margin-bottom: 10px;
+    font-family: 'Cinzel', serif;
+    border-bottom: 1px solid var(--accent-bronze);
+    padding-bottom: 5px;
+}
+
+.metric-group h4 {
+    color: var(--accent-cyan);
+    margin-bottom: 5px;
+    font-size: 1em;
+    font-family: 'Cinzel', serif;
+}
+
+.metric-group:nth-child(3) h4 {
+    color: var(--accent-red);
+}
+
+.metric-group p {
+    font-size: 1em;
+    color: var(--text-sub);
+    display: flex;
+    justify-content: space-between;
+}
+
+.metric-group span {
+    color: var(--text-main);
+    font-weight: bold;
+}
+
+#controls-hint {
+    margin-top: 20px;
+    font-size: 0.8em;
+    color: var(--text-sub);
+    text-align: center;
+    border-top: 1px solid var(--accent-bronze);
+    padding-top: 10px;
+    font-family: 'Cinzel', serif;
+}
+
+/* Overlays */
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(15, 15, 26, 0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    transition: opacity 0.3s ease;
+}
+
+.overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.overlay h1 {
+    font-size: 3.5em;
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+    text-shadow: var(--glow-gold);
+    font-family: 'Cinzel', serif;
+    letter-spacing: 4px;
+}
+
+.overlay h2 {
+    font-size: 1.5em;
+    color: var(--accent-cyan);
+    margin-bottom: 50px;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 2px;
+}
+
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 300px;
+}
+
+button {
+    padding: 15px;
+    font-size: 1.2em;
+    background-color: transparent;
+    color: var(--accent-gold);
+    border: 2px solid var(--accent-gold);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Cinzel', serif;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+button:hover {
+    background-color: var(--accent-gold);
+    color: var(--bg-primary);
+    box-shadow: var(--glow-gold);
+    transform: translateY(-2px);
+}
+
+/* Instructions */
+#instructions-overlay .scroll-content {
+    max-width: 650px;
+    max-height: 60vh;
+    overflow-y: auto;
+    text-align: left;
+    padding: 30px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--accent-bronze);
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+#instructions-overlay h3 {
+    color: var(--accent-cyan);
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-family: 'Cinzel', serif;
+    border-bottom: 1px solid var(--accent-bronze);
+    display: inline-block;
+}
+
+#instructions-overlay p {
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+.legend-item {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+.legend-item.red {
+    background-color: var(--accent-red);
+    box-shadow: 0 0 5px var(--accent-red);
+}
+
+.legend-item.gold {
+    background-color: var(--accent-gold);
+    box-shadow: 0 0 5px var(--accent-gold);
+}
+
+/* Game Over */
+#game-over-overlay h1 {
+    color: var(--accent-red);
+}
+
+#game-over-overlay h2 {
+    color: var(--accent-gold);
+    margin-bottom: 30px;
+}
+
+.stats-box {
+    background-color: var(--card-bg);
+    padding: 25px;
+    border-radius: 8px;
+    border: 1px solid var(--accent-gold);
+    min-width: 450px;
+    text-align: center;
+}
+
+.stats-box p {
+    margin: 12px 0;
+    font-size: 1.1em;
+}
+
+/* Responsive */
+@media (max-width: 1000px) {
+    #metrics-panel {
+        display: none;
+    }
+}
