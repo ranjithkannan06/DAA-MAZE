@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDNIGHT LABYRINTH</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- HUD -->
+        <div id="hud">
+            <div id="hud-left">LEVEL: <span id="level-display">MEDIUM</span></div>
+            <div id="hud-center">MIDNIGHT LABYRINTH</div>
+            <div id="hud-right">TIME: <span id="time-display">0.0</span>s</div>
+        </div>
+
+        <!-- Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Metrics Panel -->
+        <div id="metrics-panel">
+            <h3>GAME METRICS</h3>
+            <div class="metric-group">
+                <h4>PLAYER</h4>
+                <p>Steps: <span id="p-steps">0</span></p>
+                <p>Cost: <span id="p-cost">0.0</span></p>
+            </div>
+            <div class="metric-group">
+                <h4>AI (GREEDY)</h4>
+                <p>Steps: <span id="ai-steps">0</span></p>
+                <p>Cost: <span id="ai-cost">0.0</span></p>
+            </div>
+            <div id="controls-hint">
+                [ESC] MENU | [R] RESTART | [B] BFS VIEW
+            </div>
+        </div>
+
+        <!-- Menu Overlay -->
+        <div id="menu-overlay" class="overlay">
+            <h1>MIDNIGHT LABYRINTH</h1>
+            <h2>GREEDY SEARCH CHALLENGE</h2>
+            <div class="menu-options">
+                <button onclick="startGame('EASY')">EASY</button>
+                <button onclick="startGame('MEDIUM')">MEDIUM</button>
+                <button onclick="startGame('HARD')">HARD</button>
+                <button onclick="showInstructions()">INSTRUCTIONS</button>
+            </div>
+        </div>
+
+        <!-- Instructions Overlay -->
+        <div id="instructions-overlay" class="overlay hidden">
+            <h2>INSTRUCTIONS</h2>
+            <div class="scroll-content">
+                <h3>OBJECTIVE</h3>
+                <p>Reach the Goal [G] with minimal cost.</p>
+                <p>Outsmart the Greedy AI Agent.</p>
+                <p>Collect Gold [-2] | Avoid Traps [+3].</p>
+
+                <h3>CONTROLS</h3>
+                <p><strong>WASD / Arrows</strong> : Move</p>
+                <p><strong>Q, E, Z, C</strong> : Diagonals</p>
+                <p><strong>R</strong> : Restart</p>
+                <p><strong>B</strong> : Toggle BFS</p>
+                <p><strong>ESC</strong> : Menu</p>
+
+                <h3>LEGEND</h3>
+                <p><span class="legend-item red"></span> RED : Trap [+3]</p>
+                <p><span class="legend-item gold"></span> GOLD : Power-Up [-2]</p>
+            </div>
+            <button onclick="hideInstructions()">BACK</button>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="game-over-overlay" class="overlay hidden">
+            <h1 id="go-title">GAME OVER</h1>
+            <h2 id="go-result">VICTORY!</h2>
+            <div class="stats-box">
+                <p>YOUR COST: <span id="go-p-cost">0</span> | AI COST: <span id="go-ai-cost">0</span></p>
+                <p>YOUR STEPS: <span id="go-p-steps">0</span> | AI STEPS: <span id="go-ai-steps">0</span></p>
+            </div>
+            <div id="algo-stats" class="stats-box" style="margin-top: 10px; font-size: 0.9em; text-align: left;">
+                <!-- Stats will be injected here -->
+            </div>
+            <button onclick="showMenu()">MENU</button>
+        </div>
+
+        <!-- Blackout Transition Overlay -->
+        <div id="blackout-overlay" class="overlay hidden"
+            style="background-color: #0F0F1A; z-index: 200; transition: opacity 0.5s;"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
