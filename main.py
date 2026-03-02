@@ -32,6 +32,7 @@ GRAPH_VIEW = 6
 VISUALIZE_LOGIC = 7
 DP_SIMULATION = 8  # J key - Animated DP computation visualization
 DC_REPLAY = 9  # D key - Synchronized D&C Replay
+MULTI_SIMULATION = 10 # M key - Compare all algorithms
 
 # Constants
 TILE_SIZE = 30
@@ -100,6 +101,11 @@ class GameController:
         self.dc_sim_target_block = None
         self.dc_sim_change_type = ""
         self.dc_sim_change_node = None
+
+        # Multi-Algorithm Simulation System
+        self.simulation_agents = []
+        self.sim_names = []
+        self.current_sim_index = 0
 
         # Initialize UI Component
         fonts_dict = {
@@ -1106,7 +1112,7 @@ class GameController:
             self.draw_text("Press ENTER to Menu", self.large_font, ACCENT_BLUE, (cx, cy + 160))
         
         self.draw_text("Press P to Watch Replay", self.medium_font, TEXT_SUB, (cx, cy + 200))
-        self.draw_text("Press S to Simulate All Algorithms", self.medium_font, ACCENT_ORANGE, (cx, cy + 230))
+        self.draw_text("Press M to Compare All Algorithms", self.medium_font, ACCENT_ORANGE, (cx, cy + 230))
 
     def draw_dp_simulation(self):
         """Animated DP computation visualization - shows wave spreading from center"""
@@ -1207,6 +1213,101 @@ class GameController:
                     valid_neighbors = [n for n in neighbors if n.type != '#']
                     if len(valid_neighbors) <= 1 and node != self.maze.start_node and node != self.maze.goal_node:
                         self.dead_end_nodes.add(node)
+
+    def prepare_multi_simulation(self):
+        print("Preparing Multi-Simulation Agents...")
+        self.simulation_agents = [
+            EuclideanAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            ManhattanAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            ChebyshevAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            HillClimbingAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            BFSAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            DFSAI(self.maze.start_node, self.maze.goal_node, self.maze),
+            AStarAI(self.maze.start_node, self.maze.goal_node, self.maze)
+        ]
+        self.sim_names = [
+            "Greedy Best-First (Euclidean)",
+            "Greedy Best-First (Manhattan)",
+            "Greedy Best-First (Chebyshev)",
+            "Pure Greedy (Hill Climbing)",
+            "Breadth-First Search (BFS)",
+            "Depth-First Search (DFS)",
+            "A* Search (Optimal)"
+        ]
+        self.current_sim_index = 0
+        print("Simulation Agents Ready")
+
+    def draw_multi_simulation(self):
+        self.screen.fill(BG_PRIMARY)
+        
+        # Use the current simulation agent as the 'active' AI for visualization
+        current_agent = self.simulation_agents[self.current_sim_index]
+        
+        # 1. Draw Grid (Background)
+        for r in range(self.maze.height):
+            for c in range(self.maze.width):
+                node = self.maze.get_node(r, c)
+                if node.type == '#':
+                    pygame.draw.rect(self.screen, BG_SECONDARY, (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE))
+                else:
+                    color = (20, 20, 30)
+                    # Show visited for current agent
+                    if node in current_agent.visited_nodes:
+                         color = (40, 40, 60) # Slightly lighter for visited
+                    
+                    pygame.draw.rect(self.screen, color, (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE))
+                    pygame.draw.rect(self.screen, (30, 30, 40), (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE), 1)
+
+                if node == self.maze.start_node:
+                    self.draw_text("S", self.font, ACCENT_GREEN, (c*TILE_SIZE + TILE_SIZE//2, r*TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), shadow=False)
+                elif node == self.maze.goal_node:
+                    self.draw_text("G", self.font, ACCENT_PURPLE, (c*TILE_SIZE + TILE_SIZE//2, r*TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), shadow=False)
+
+        # 2. Draw Path
+        if len(current_agent.full_path) > 1:
+            points = [(n.c * TILE_SIZE + TILE_SIZE//2, n.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y) for n in current_agent.full_path]
+            pygame.draw.lines(self.screen, ACCENT_ORANGE, False, points, 3)
+
+        # 3. Draw Agent
+        end_node = current_agent.full_path[-1] if current_agent.full_path else current_agent.current_node
+        pygame.draw.circle(self.screen, ACCENT_ORANGE, (end_node.c * TILE_SIZE + TILE_SIZE//2, end_node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), TILE_SIZE//3)
+
+        # 4. HUD
+        w, h = self.screen.get_size()
+        
+        # Header
+        pygame.draw.rect(self.screen, CARD_BG, (0, 0, w, 80))
+        self.draw_text(f"MULTI-SIMULATION MODE: {self.sim_names[self.current_sim_index]}", self.heading_font, ACCENT_BLUE, (w//2, 40))
+        
+        # Metrics Panel
+        panel_y = h - 150
+        pygame.draw.rect(self.screen, (0, 0, 0, 200), (0, panel_y, w, 150))
+        
+        stats = [
+            f"Total Cost: {current_agent.solution_cost}",
+            f"Steps: {current_agent.solution_steps}",
+            f"Nodes Explored: {current_agent.metrics.nodes_explored}",
+            f"Nodes Visited: {current_agent.metrics.nodes_visited}",
+            f"Efficiency: {current_agent.get_efficiency_vs_optimal(self.maze.optimal_path_length)*100:.1f}%"
+        ]
+        
+        # Explicit Proof of No Backtracking
+        sx = w // 2
+        sy = panel_y + 30
+        
+        self.draw_text("BACKTRACKING: DISABLED", self.heading_font, ACCENT_RED, (sx, sy - 40), shadow=False)
+        
+        # Check if failed
+        if current_agent.full_path and current_agent.full_path[-1] != self.maze.goal_node:
+             self.draw_text("STATUS: FAILED (Stuck at Dead End)", self.heading_font, ACCENT_RED, (sx, sy - 10), shadow=False)
+        else:
+             self.draw_text("STATUS: SUCCESS", self.heading_font, ACCENT_GREEN, (sx, sy - 10), shadow=False)
+
+        for i, line in enumerate(stats):
+            self.draw_text(line, self.medium_font, TEXT_MAIN, (sx, sy + i * 25 + 20), shadow=False)
+
+        # Controls
+        self.draw_text("< PREV (Left)   |   NEXT (Right) >   |   ESC: Menu", self.small_font, TEXT_SUB, (w//2, h - 20))
 
     def draw_simulation(self):
         w, h = self.screen.get_size()
@@ -1792,6 +1893,9 @@ class GameController:
                         elif event.key == pygame.K_s:
                              self.state = SIMULATION
                              self.prepare_simulation()
+                        elif event.key == pygame.K_m:
+                             self.state = MULTI_SIMULATION
+                             self.prepare_multi_simulation()
                     
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         w, h = self.screen.get_size()
@@ -1835,6 +1939,9 @@ class GameController:
                     elif event.key == pygame.K_s: # Enable Simulation Mode from Playing
                         self.state = SIMULATION
                         self.prepare_simulation()
+                    elif event.key == pygame.K_m: # Enable Multi-Sim 
+                        self.state = MULTI_SIMULATION
+                        self.prepare_multi_simulation()
                     elif event.key == pygame.K_d: # Enable DC Replay Mode
                         self.state = DC_REPLAY
                         self.prepare_dc_replay()
@@ -1875,6 +1982,9 @@ class GameController:
                     elif event.key == pygame.K_s:
                         self.state = SIMULATION
                         self.prepare_simulation()
+                    elif event.key == pygame.K_m:
+                        self.state = MULTI_SIMULATION
+                        self.prepare_multi_simulation()
                     elif event.key == pygame.K_d:
                         self.state = DC_REPLAY
                         self.prepare_dc_replay()
@@ -1896,6 +2006,13 @@ class GameController:
                     elif event.key == pygame.K_v: self.show_visited = not self.show_visited # Visited Toggle
                     elif event.key == pygame.K_c: self.show_huffman = not self.show_huffman # Huffman Toggle
 
+                elif self.state == MULTI_SIMULATION and event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE: self.state = GAME_OVER
+                    elif event.key == pygame.K_RIGHT: 
+                        self.current_sim_index = (self.current_sim_index + 1) % len(self.simulation_agents)
+                    elif event.key == pygame.K_LEFT:
+                        self.current_sim_index = (self.current_sim_index - 1) % len(self.simulation_agents)
+                        
                 elif self.state == SIMULATION and event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE: 
                         self.state = PLAYING
@@ -2043,8 +2160,11 @@ class GameController:
                     import traceback
                     traceback.print_exc()
                     self.state = PLAYING
+
+            elif self.state == MULTI_SIMULATION:
+                self.draw_multi_simulation()
                     
-            if self.state in [PLAYING, SIMULATION, DC_REPLAY, REPLAY]: # Draw FPS
+            if self.state in [PLAYING, SIMULATION, MULTI_SIMULATION, DC_REPLAY, REPLAY]: # Draw FPS
                 pass # Optional FPS counter can go here
 
 
