@@ -74,6 +74,73 @@ class AnalysisUI:
                  
             self.draw_text(text, self.fonts['small'], color, (stack_x + stack_w//2, sy + y_offset), shadow=False)
             sy += 25
+  # ==========================================
+    # ==== MEMBER 3 SECTION ====
+    # Responsibility: Live Graph Rendering Polish
+    # ==========================================
+    
+    def draw_live_analysis_graph(self, x_start, w, h, metrics, current_metric, metric_titles):
+        """Standard 'T' key graph parsing real-time tracking history."""
+        analysis_w = w - x_start
+        analysis_surface = pygame.Surface((analysis_w, h))
+        analysis_surface.fill((255, 255, 255))
+        self.screen.blit(analysis_surface, (x_start, 0))
+        
+        pygame.draw.rect(self.screen, (150, 150, 150), pygame.Rect(x_start, 0, analysis_w, h), 2)
+        
+        if not metrics:
+            self.draw_text("Waiting for Simulation Data...", self.fonts['medium'], (100, 100, 100), (x_start + analysis_w//2, h//2))
+            return
+            
+        last_snap = metrics[-1]
+        
+        # Draw the top Header and live tracking text block
+        self.draw_text("Live Runtime Analysis", self.fonts['large'], (0, 0, 0), (x_start + analysis_w//2, 40), shadow=False)
+        
+        # Draw stats
+        stats_x = x_start + 40
+        stats_y = h - 220
+        self.draw_text("LIVE METRICS", self.fonts['medium'], (0, 0, 0), (stats_x, stats_y), anchor="topleft", shadow=False)
+        pygame.draw.line(self.screen, (150, 150, 150), (stats_x, stats_y + 35), (w - 40, stats_y + 35), 2)
+        
+        row_space = 25
+        self.draw_text("Steps:", self.fonts['mono'], (40, 40, 40), (stats_x, stats_y + 50), anchor="topleft", shadow=False)
+        self.draw_text(f"{last_snap['step']}", self.fonts['mono'], (0, 0, 0), (stats_x + 200, stats_y + 50), anchor="topleft", shadow=False)
+        self.draw_text("Nodes Explored:", self.fonts['mono'], (40, 40, 40), (stats_x, stats_y + 50 + row_space), anchor="topleft", shadow=False)
+        self.draw_text(f"{last_snap['nodes']}", self.fonts['mono'], (0, 0, 0), (stats_x + 200, stats_y + 50 + row_space), anchor="topleft", shadow=False)
+        self.draw_text("Backtracks:", self.fonts['mono'], (40, 40, 40), (stats_x, stats_y + 50 + row_space*2), anchor="topleft", shadow=False)
+        self.draw_text(f"{last_snap['backtracks']}", self.fonts['mono'], (0, 0, 0), (stats_x + 200, stats_y + 50 + row_space*2), anchor="topleft", shadow=False)
+        self.draw_text("Stack Depth:", self.fonts['mono'], (40, 40, 40), (stats_x, stats_y + 50 + row_space*3), anchor="topleft", shadow=False)
+        self.draw_text(f"{last_snap['stack_depth']}", self.fonts['mono'], (0, 0, 0), (stats_x + 200, stats_y + 50 + row_space*3), anchor="topleft", shadow=False)
+        self.draw_text("Runtime (ms):", self.fonts['mono'], (40, 40, 40), (stats_x, stats_y + 50 + row_space*4), anchor="topleft", shadow=False)
+        self.draw_text(f"{last_snap['runtime']:.1f}", self.fonts['mono'], (0, 0, 0), (stats_x + 200, stats_y + 50 + row_space*4), anchor="topleft", shadow=False)
+
+        # Draw the graph mapping bounds
+        graph_x = x_start + 50
+        graph_y = 140
+        graph_w = analysis_w - 100
+        graph_h = stats_y - graph_y - 40
+        
+        pygame.draw.line(self.screen, (100, 100, 100), (graph_x, graph_y - 20), (graph_x, graph_y + graph_h), 2) # Y-Axis
+        pygame.draw.line(self.screen, (100, 100, 100), (graph_x, graph_y + graph_h), (graph_x + graph_w + 20, graph_y + graph_h), 2) # X-Axis
+        self.draw_text(metric_titles[current_metric], self.fonts['medium'], (100, 100, 100), (graph_x + 10, graph_y - 20), anchor="topleft", shadow=False)
+        self.draw_text("Step Count", self.fonts['medium'], (100, 100, 100), (graph_x + graph_w - 80, graph_y + graph_h + 15), anchor="topleft", shadow=False)
+        
+        if len(metrics) >= 2:
+            max_step = metrics[-1]['step']
+            max_y = max(m[current_metric] for m in metrics)
+            if max_y == 0: max_y = 1
+            
+            points = []
+            for m in metrics:
+                px = graph_x + (m['step'] / max_step) * graph_w
+                py = graph_y + graph_h - (m[current_metric] / max_y) * graph_h
+                points.append((px, py))
+                if m['state'] == "BACKTRACK":
+                    pygame.draw.circle(self.screen, (255, 150, 150, 150), (int(px), int(py)), 8)
+                    pygame.draw.circle(self.screen, (220, 30, 30), (int(px), int(py)), 4)
+                    
+            pygame.draw.lines(self.screen, (30, 80, 200), False, points, 4)
 
 
 
