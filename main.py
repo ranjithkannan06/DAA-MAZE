@@ -17,6 +17,9 @@ from AStar.astar import AStarAI
 from circular_maze import CircularMaze
 
 from algorithm_visualizer import TarjanVisualizer, RegionVisualizer, ConquerVisualizer
+from backtracking_engine import BacktrackingEngine
+from complexity_engine import ComplexityEngine
+from analysis_ui import AnalysisUI
 
 # UI States
 MENU = 0
@@ -63,6 +66,8 @@ class GameController:
         self.medium_font = pygame.font.Font(None, 28)
         self.font = pygame.font.Font(None, 24) 
         self.small_font = pygame.font.Font(None, 20)
+        self.mono_font = pygame.font.SysFont('courier', 20, bold=True)
+        self.backtrack_flash_time = 0  # Timestamp for backtrack flash overlay
 
         self.state = MENU
         self.level = "MEDIUM"
@@ -74,6 +79,12 @@ class GameController:
         self.show_heuristics = False
         self.show_dp_viz = False  # K key toggle for DP cost visualization
         self.show_annotations = False
+        
+        # Complexity Mode
+        self.show_complexity_mode = False
+        self.complexity_highlight_index = 0
+        self.temp_msg = ""
+        self.temp_msg_time = 0
 
         # Animation & Scroll
         self.pulse_time = 0
@@ -81,6 +92,16 @@ class GameController:
         self.max_scroll = 0
         self.scrollbar_grabbed = False
         self.last_move_time = 0
+
+        # Initialize UI Component
+        fonts_dict = {
+            'small': self.small_font,
+            'medium': self.medium_font,
+            'large': self.large_font,
+            'mono': self.mono_font,
+            'font': self.font
+        }
+        self.analysis_ui = AnalysisUI(self.screen, fonts_dict)
 
         self.reset_game("MEDIUM") # Default back to MEDIUM
 
@@ -181,9 +202,10 @@ class GameController:
         footer = self.small_font.render("ESC / BACKSPACE : Back", True, TEXT_SUB)
         self.screen.blit(footer, footer.get_rect(center=(w//2, h-40)))
 
-    def reset_game(self, level):
-        print(f"Resetting game to level: {level}")
+    def reset_game(self, level, maze_type="STRUCTURED"):
+        print(f"Resetting game to level: {level} ({maze_type})")
         self.level = level
+        self.maze_type = maze_type
         speeds = {"EASY": 1.0, "MEDIUM": 2.0, "HARD": 4.0, "DYNAMIC": 2.5, "CIRCULAR": 1.0}
         sizes = {"EASY": (15,15), "MEDIUM": (21,21), "HARD": (25,25), "DYNAMIC": (25, 25), "CIRCULAR": (20, 20)}
         self.grid_size = sizes[level]
@@ -212,7 +234,7 @@ class GameController:
             self.maze = CircularMaze(num_rings=4, sectors=12)
             print("CircularMaze Generated.")
         else:
-            self.maze = Maze(width=w, height=h)
+            self.maze = Maze(width=w, height=h, maze_type=maze_type)
         print("Maze Generated")
         print("Maze Generated")
         pygame.event.pump()
@@ -250,7 +272,11 @@ class GameController:
         self.show_graph = False
         self.show_visited = False
         self.show_huffman = False
-        self.show_huffman = False
+        
+        # Runtime Analysis Mode State
+        self.show_analysis_mode = False
+        self.analysis_metric = "nodes" # "nodes", "runtime", "stack_depth", "backtracks"
+        
         self.record_frame()
 
         # Simulation System
@@ -260,37 +286,107 @@ class GameController:
 
 
     def record_frame(self):
-        # Record current state for replay
+        # Record full current state for backtracking
         self.history.append({
-            'player_pos': (self.player.current_node.r, self.player.current_node.c),
-            'ai_pos': (self.ai.current_node.r, self.ai.current_node.c),
-            'ai_path': list(self.ai.path), # Copy
-            'time': self.elapsed_time
+            'player': {
+                'node': self.player.current_node,
+                'cost': self.player.total_cost,
+                'steps': self.player.steps,
+                'path': list(self.player.path),
+                'visited_positions': set(self.player.visited_positions)
+            },
+            'ai': {
+                'node': self.ai.current_node,
+                'cost': self.ai.total_cost,
+                'steps': self.ai.steps,
+                'path': list(self.ai.path),
+                'path_index': self.ai.path_index,
+                'finished': self.ai.finished,
+                'action_log': self.ai.action_log,
+                'metrics': {
+                    'nodes_explored': self.ai.metrics.nodes_explored,
+                    'nodes_visited': self.ai.metrics.nodes_visited,
+                    'backtrack_count': self.ai.metrics.backtrack_count
+                }
+            },
+            'game': {
+                'consumed_items': set(self.consumed_items),
+                'elapsed_time': self.elapsed_time
+            }
         })
+
+    def backtrack(self):
+        if len(self.history) <= 1:
+            print("Already at start of history.")
+            return
+
+        # Pop current state and get previous one
+        self.history.pop()
+        state = self.history[-1]
+
+        # Restore Player
+        p_state = state['player']
+        self.player.current_node = p_state['node']
+        self.player.total_cost = p_state['cost']
+        self.player.steps = p_state['steps']
+        self.player.path = list(p_state['path'])
+        self.player.visited_positions = set(p_state['visited_positions'])
+        self.player.finished = False
+
+        # Restore AI
+        a_state = state['ai']
+        self.ai.current_node = a_state['node']
+        self.ai.total_cost = a_state['cost']
+        self.ai.steps = a_state['steps']
+        self.ai.path = list(a_state['path'])
+        self.ai.path_index = a_state['path_index']
+        self.ai.finished = a_state['finished']
+        self.ai.action_log = a_state['action_log']
+        self.ai.metrics.nodes_explored = a_state['metrics']['nodes_explored']
+        self.ai.metrics.nodes_visited = a_state['metrics']['nodes_visited']
+        self.ai.metrics.backtrack_count = a_state['metrics']['backtrack_count']
+
+        # Restore Game
+        g_state = state['game']
+        self.consumed_items = set(g_state['consumed_items'])
+        self.elapsed_time = g_state['elapsed_time']
+        self.last_move_time = time.time()
+        self.backtrack_flash_time = time.time()
+        
+        print(f"Backtracked! History size: {len(self.history)}")
+
+    def get_menu_buttons(self, w, h):
+        buttons = []
+        base_y = h//2 - 150
+        
+        # Row 1
+        buttons.append((pygame.Rect(w//2 - 260, base_y, 250, 60), "EASY - STRUC", ("EASY", "STRUCTURED")))
+        buttons.append((pygame.Rect(w//2 + 10, base_y, 250, 60), "EASY - BACK", ("EASY", "BACKTRACKING")))
+        # Row 2
+        buttons.append((pygame.Rect(w//2 - 260, base_y + 70, 250, 60), "MED - STRUC", ("MEDIUM", "STRUCTURED")))
+        buttons.append((pygame.Rect(w//2 + 10, base_y + 70, 250, 60), "MED - BACK", ("MEDIUM", "BACKTRACKING")))
+        # Row 3
+        buttons.append((pygame.Rect(w//2 - 260, base_y + 140, 250, 60), "HARD - STRUC", ("HARD", "STRUCTURED")))
+        buttons.append((pygame.Rect(w//2 + 10, base_y + 140, 250, 60), "HARD - BACK", ("HARD", "BACKTRACKING")))
+
+        # Row 4, 5, 6
+        buttons.append((pygame.Rect(w//2 - 150, base_y + 210, 300, 60), "DYNAMIC", ("DYNAMIC", "STRUCTURED")))
+        buttons.append((pygame.Rect(w//2 - 150, base_y + 280, 300, 60), "CIRCULAR", ("CIRCULAR", "STRUCTURED")))
+        buttons.append((pygame.Rect(w//2 - 150, base_y + 350, 300, 60), "INSTRUCTIONS", "INSTRUCTIONS"))
+        
+        return buttons
 
     def draw_menu(self):
         w, h = self.screen.get_size()
         self.screen.fill(BG_PRIMARY)
 
         # Title
-        self.draw_text("DUEL OF LABYRINTH", self.title_font, ACCENT_GREEN, (w//2, h//3))
-
-
-        options = [
-            ("EASY", "EASY"),
-            ("MEDIUM", "MEDIUM"),
-            ("HARD", "HARD"),
-            ("DYNAMIC", "DYNAMIC"),
-            ("CIRCULAR", "CIRCULAR"),
-            ("INSTRUCTIONS", INSTRUCTIONS)
-        ]
+        self.draw_text("DUEL OF LABYRINTH", self.title_font, ACCENT_GREEN, (w//2, h//3 - 80))
 
         mx, my = pygame.mouse.get_pos()
-        base_y = h//2 - 30
+        buttons = self.get_menu_buttons(w, h)
 
-        for i, (text, val) in enumerate(options):
-            y = base_y + i * 70
-            rect = pygame.Rect(w//2 - 150, y - 30, 300, 60)
+        for rect, text, val in buttons:
             hovered = rect.collidepoint(mx, my)
             
             # Button Style
@@ -305,7 +401,7 @@ class GameController:
             self.screen.blit(text_surf, text_surf.get_rect(center=rect.center))
 
         hint = self.small_font.render("Select a level to start", True, TEXT_SUB)
-        self.screen.blit(hint, hint.get_rect(center=(w//2, h - 50)))
+        self.screen.blit(hint, hint.get_rect(center=(w//2, h - 30)))
 
 
     def draw_circular_maze(self):
@@ -741,7 +837,11 @@ class GameController:
             stats = [
                 f"Explored: {self.ai.metrics.nodes_explored}",
                 f"Backtracks: {self.ai.metrics.backtrack_count}",
-                f"Efficiency: {self.ai.get_efficiency_vs_optimal(self.maze.optimal_path_length)*100:.1f}%"
+                f"Efficiency: {self.ai.get_efficiency_vs_optimal(self.maze.optimal_path_length)*100:.1f}%",
+                "",
+                "CONTROLS:",
+                f"Undo: 'U' or 'Backspace'",
+                f"History size: {len(self.history)}"
             ]
             
             for line in stats:
@@ -828,6 +928,14 @@ class GameController:
             # Controls Hint
             y = panel_y + panel_h - 40
             self.draw_text("ESC: Menu | R: Restart | B: BFS", self.small_font, TEXT_SUB, (panel_x + panel_w//2, y), shadow=False)
+
+        # Backtrack Visual Feedback Overlay
+        if time.time() - self.backtrack_flash_time < 1.0:
+            flash_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+            alpha = int(100 * (1.0 - (time.time() - self.backtrack_flash_time)))
+            flash_surface.fill((255, 50, 50, max(0, min(255, alpha))))
+            self.screen.blit(flash_surface, (0, 0))
+            self.draw_text("BACKTRACKED!", self.title_font, (255, 100, 100), (w//2, h//4), shadow=True)
 
     def draw_graph_simulation(self):
         """Mode 3: Full Screen Graph Simulation View"""
@@ -1072,266 +1180,228 @@ class GameController:
         self.draw_text(complete_text, self.small_font, (200, 200, 200), (w//2, h - 30))
 
     def prepare_simulation(self):
-        print("Preparing Simulation Agents...")
-        self.simulation_agents = [
-            HierarchicalAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            EuclideanAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            ManhattanAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            ChebyshevAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            HillClimbingAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            BFSAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            DFSAI(self.maze.start_node, self.maze.goal_node, self.maze),
-            AStarAI(self.maze.start_node, self.maze.goal_node, self.maze)
-        ]
-        self.sim_names = [
-            "Divide & Conquer (Hierarchical)",
-            "Greedy Best-First (Euclidean)",
-            "Greedy Best-First (Manhattan)",
-            "Greedy Best-First (Chebyshev)",
-            "Pure Greedy (Hill Climbing)",
-            "Breadth-First Search (BFS)",
-            "Depth-First Search (DFS)",
-            "A* Search (Optimal)"
-        ]
-        self.current_sim_index = 0
-        print("Simulation Agents Ready")
-
-    def draw_simulation(self):
-        self.screen.fill(BG_PRIMARY)
+        print("Preparing DFSSimulator...")
+        self.dfs_sim = BacktrackingEngine(self.maze.start_node, self.maze.goal_node, self.maze)
+        self.dfs_sim.full_exploration_mode = getattr(self, 'full_exploration_mode', False)
+        self.sim_start_time = time.time()
+        self.sim_speed = "Slow" # Slow, Normal, Fast
+        self.sim_last_step = time.time()
+        self.sim_alpha = 0
         
-        # Use the current simulation agent as the 'active' AI for visualization
-        current_agent = self.simulation_agents[self.current_sim_index]
-        
-        # Hack: Temporarily swap self.ai to current_agent to reuse draw methods
-        # or just manually draw what we need. Let's manually draw to be safe and explicit.
-        
-        # 1. Draw Grid (Background)
+        # Pre-calculate dead-end nodes for highlighting
+        self.dead_end_nodes = set()
         for r in range(self.maze.height):
             for c in range(self.maze.width):
-                node = self.maze.get_node(r, c)
-                if node.type == '#':
-                    pygame.draw.rect(self.screen, BG_SECONDARY, (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE))
-                else:
-                    color = (20, 20, 30)
-                    # Show visited for current agent
-                    if node in current_agent.visited_nodes:
-                         color = (40, 40, 60) # Slightly lighter for visited
-                    
-                    pygame.draw.rect(self.screen, color, (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE))
-                    pygame.draw.rect(self.screen, (30, 30, 40), (c*TILE_SIZE, r*TILE_SIZE + GRID_OFFSET_Y, TILE_SIZE, TILE_SIZE), 1)
+                node = self.maze.grid[r][c]
+                if node.type != '#':
+                    neighbors = self.maze.get_neighbors(node)
+                    valid_neighbors = [n for n in neighbors if n.type != '#']
+                    if len(valid_neighbors) <= 1 and node != self.maze.start_node and node != self.maze.goal_node:
+                        self.dead_end_nodes.add(node)
 
-                if node == self.maze.start_node:
-                    self.draw_text("S", self.font, ACCENT_GREEN, (c*TILE_SIZE + TILE_SIZE//2, r*TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), shadow=False)
-                elif node == self.maze.goal_node:
-                    self.draw_text("G", self.font, ACCENT_PURPLE, (c*TILE_SIZE + TILE_SIZE//2, r*TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), shadow=False)
-
-        # 2. Draw Path
-        if len(current_agent.full_path) > 1:
-            points = [(n.c * TILE_SIZE + TILE_SIZE//2, n.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y) for n in current_agent.full_path]
-            pygame.draw.lines(self.screen, ACCENT_ORANGE, False, points, 3)
-
-        # 3. Hierarchical AI Special Visualization (Divide & Conquer Plan)
-        # DEBUG PRINT (Run once per second to avoid spam)
-        if isinstance(current_agent, HierarchicalAI):
-            if int(time.time()) % 2 == 0 and not hasattr(self, '_last_debug_print'):
-                 self._last_debug_print = time.time()
-                 print(f"DEBUG RENDER: Agent={current_agent.algorithm_name}, PlanLen={len(current_agent.high_level_plan)}, Regions={len(self.maze.regions) if hasattr(self.maze, 'regions') else 'None'}")
-        
-        if isinstance(current_agent, HierarchicalAI) and current_agent.high_level_plan:
-            # A. REGION COLORING (The "Divide" Phase)
-            # Define a palette of distinct colors (avoiding red/green/blue which are used for Start/Goal/Player)
-            region_colors = [
-                (100, 100, 0), (100, 0, 100), (0, 100, 100), 
-                (100, 50, 0), (50, 100, 0), (0, 50, 100),
-                (100, 0, 50), (50, 0, 100), (80, 80, 80)
-            ]
-            
-            # Draw Region Overlays
-            # We iterate over the grid and check region_map
-            if hasattr(self.maze, 'regions'):
-                for r in range(self.maze.height):
-                    for c in range(self.maze.width):
-                        node = self.maze.get_node(r, c)
-                        if node in self.maze.regions:
-                            rid = self.maze.regions[node]
-                            color = region_colors[rid % len(region_colors)]
-                            
-                            # Draw semi-transparent overlay? Pygame rects are solid mostly unless Surface used.
-                            # Let's draw a small colored square in the center or a border.
-                            # Using a distinct border or inner rect is safer for performance than creating surfaces per cell.
-                            x = c * TILE_SIZE
-                            y = r * TILE_SIZE + GRID_OFFSET_Y
-                            
-                            # Draw inner colored rect
-                            pygame.draw.rect(self.screen, color, (x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4))
-
-
-            # B. HIGH-LEVEL PLAN (The "Plan" Phase)
-            # We need to compute centroids for regions in the plan to draw clear arrows
-            # Pre-compute centroids for all regions (or just the ones in plan)
-            region_centroids = {}
-            for r in range(self.maze.height):
-                for c in range(self.maze.width):
-                    node = self.maze.get_node(r, c)
-                    if node in self.maze.regions:
-                        rid = self.maze.regions[node]
-                        if rid not in region_centroids: region_centroids[rid] = []
-                        region_centroids[rid].append((r, c))
-            
-            # Average the coordinates
-            final_centroids = {}
-            for rid, coords in region_centroids.items():
-                sr = sum(r for r, c in coords) / len(coords)
-                sc = sum(c for r, c in coords) / len(coords)
-                final_centroids[f"R_{rid}"] = (sr, sc)
-
-            # Draw Plan Lines
-            plan_points = []
-            for item in current_agent.high_level_plan:
-                if isinstance(item, str) and item.startswith("R_"): # Region
-                    if item in final_centroids:
-                        r, c = final_centroids[item]
-                        x = int(c * TILE_SIZE + TILE_SIZE//2)
-                        y = int(r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2)
-                        plan_points.append((x, y))
-                        # Draw Region Center
-                        pygame.draw.circle(self.screen, (0, 255, 255), (x, y), 8) # Cyan dot
-                        pygame.draw.circle(self.screen, (0, 0, 0), (x, y), 8, 1)
-                        # Label Region ID
-                        rid_num = item.split('_')[1]
-                        self.draw_text(rid_num, self.small_font, (255, 255, 255), (x, y), shadow=True)
-                        
-                elif isinstance(item, Node): # Articulation Point
-                    x = int(item.c * TILE_SIZE + TILE_SIZE//2)
-                    y = int(item.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2)
-                    plan_points.append((x, y))
-                    # Draw AP
-                    pygame.draw.circle(self.screen, (255, 0, 255), (x, y), 6) # Magenta dot
-            
-            if len(plan_points) > 1:
-                pygame.draw.lines(self.screen, (0, 200, 255), False, plan_points, 4) # Thick Cyan Line for High-Level Plan
-
-        # 4. Draw Agent (at end of path or animated? Let's show full path static for now, or animated if we want)
-        # For simulation, showing the FULL PATH immediately is often better for comparison.
-        # But let's show the agent at the goal or end of path.
-        end_node = current_agent.full_path[-1] if current_agent.full_path else current_agent.current_node
-        pygame.draw.circle(self.screen, ACCENT_ORANGE, (end_node.c * TILE_SIZE + TILE_SIZE//2, end_node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2), TILE_SIZE//3)
-
-        # 4. HUD
+    def draw_simulation(self):
         w, h = self.screen.get_size()
         
-        # Header
-        pygame.draw.rect(self.screen, CARD_BG, (0, 0, w, 80))
-        self.draw_text(f"SIMULATION MODE: {self.sim_names[self.current_sim_index]}", self.heading_font, ACCENT_BLUE, (w//2, 40))
-        
-        # Metrics Panel
-        panel_y = h - 150
-        pygame.draw.rect(self.screen, (0, 0, 0, 200), (0, panel_y, w, 150))
-        
-        stats = [
-            f"Total Cost: {current_agent.solution_cost}",
-            f"Steps: {current_agent.solution_steps}",
-            f"Nodes Explored: {current_agent.metrics.nodes_explored}",
-            f"Nodes Visited: {current_agent.metrics.nodes_visited}",
-            f"Efficiency: {current_agent.get_efficiency_vs_optimal(self.maze.optimal_path_length)*100:.1f}%"
-        ]
-        
-        # Explicit Proof of No Backtracking
-        sx = w // 2
-        sy = panel_y + 30
-        
-        # Add big red warning
-        self.draw_text("BACKTRACKING: DISABLED", self.heading_font, ACCENT_RED, (sx, sy - 40), shadow=False)
-        
-        # Check if failed
-        if current_agent.full_path and current_agent.full_path[-1] != self.maze.goal_node:
-             self.draw_text("STATUS: FAILED (Stuck at Dead End)", self.heading_font, ACCENT_RED, (sx, sy - 10), shadow=False)
+        # Split-screen math
+        game_w = w
+        if getattr(self, 'show_analysis_mode', False) or getattr(self, 'show_complexity_mode', False):
+            # Squish the main game rendering to the left 55%
+            game_w = int(w * 0.55)
+            
+            # Temporarily clip rendering to the left side
+            clip_rect = pygame.Rect(0, 0, game_w, h)
+            self.screen.set_clip(clip_rect)
+            
+            # Standard game draw (will be clipped and drawn onto the left side natively)
+            self.draw_grid()
+            self.draw_entities()
+            self.draw_hud()
+            
+            # Remove clip before drawing overlay + graph
+            self.screen.set_clip(None)
+            
+            # The graph on the right 45% is drawn later, at the end of draw_simulation
         else:
-             self.draw_text("STATUS: SUCCESS", self.heading_font, ACCENT_GREEN, (sx, sy - 10), shadow=False)
+            # 1. First, draw the normal game behind the overlay
+            self.draw_grid()
+            self.draw_entities()
+            self.draw_hud()
+        
+        # 2. Fade in dark overlay
+        if self.sim_alpha < 220:
+            elapsed = time.time() - self.sim_start_time
+            self.sim_alpha = min(220, int((elapsed / 0.3) * 220)) # 300ms fade
+        
+        overlay = pygame.Surface((game_w, h), pygame.SRCALPHA)
+        overlay.fill((10, 10, 15, self.sim_alpha))
+        self.screen.blit(overlay, (0, 0))
+        
+        # 3. Draw DFS Visualization on top of overlay
+        # Draw forward edges (Green glow)
+        for (n1, n2) in self.dfs_sim.forward_edges:
+            p1 = (n1.c * TILE_SIZE + TILE_SIZE//2, n1.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            p2 = (n2.c * TILE_SIZE + TILE_SIZE//2, n2.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            pygame.draw.line(self.screen, (50, 255, 50, 150), p1, p2, 6) # Inner core
+            pygame.draw.line(self.screen, (20, 150, 20, 50), p1, p2, 12) # Glow outer
+            
+        # Draw backtrack edges (Active Thick Red Dashed)
+        # In complexity mode, we highlight a specific backtrack
+        hl_backtrack_edge = None
+        if getattr(self, 'show_complexity_mode', False):
+            metrics = self.dfs_sim.history_metrics
+            bt_events = [m for m in metrics if m.get('state') == 'BACKTRACK']
+            if bt_events and getattr(self, 'complexity_highlight_index', 0) < len(bt_events):
+                target_bt = bt_events[self.complexity_highlight_index]
+                if 'edge' in target_bt:
+                    hl_backtrack_edge = target_bt['edge']
 
-        for i, line in enumerate(stats):
-            self.draw_text(line, self.medium_font, TEXT_MAIN, (sx, sy + i * 25 + 20), shadow=False)
+        for (n1, n2) in self.dfs_sim.backtrack_edges:
+            p1 = (n1.c * TILE_SIZE + TILE_SIZE//2, n1.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            p2 = (n2.c * TILE_SIZE + TILE_SIZE//2, n2.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            
+            is_highlighted = hl_backtrack_edge and (hl_backtrack_edge == (n1, n2) or hl_backtrack_edge == (n2, n1))
+            
+            if is_highlighted:
+                # Flashing giant red segment
+                pulse = int(abs(math.sin(time.time() * 10)) * 255)
+                pygame.draw.line(self.screen, (255, 0, 0, 255), p1, p2, 10)
+                pygame.draw.line(self.screen, (pulse, 100, 100, 255), p1, p2, 18)
+            else:
+                # Thick dashed line effect for the current active backtrack
+                pygame.draw.line(self.screen, (255, 30, 30, 240), p1, p2, 6)
+                pygame.draw.line(self.screen, (255, 100, 100, 150), p1, p2, 10) # Heavy glow
+            
+        # Draw permanently rejected trails (Darker Red pollution)
+        for (n1_coords, n2_coords) in self.dfs_sim.rejected_edges:
+            p1 = (n1_coords[1] * TILE_SIZE + TILE_SIZE//2, n1_coords[0] * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            p2 = (n2_coords[1] * TILE_SIZE + TILE_SIZE//2, n2_coords[0] * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y)
+            pygame.draw.line(self.screen, (120, 10, 10, 180), p1, p2, 4)
+            # Draw tiny circles along the line to simulate dashes
+            steps = 5
+            for i in range(1, steps):
+                dx = p1[0] + (p2[0] - p1[0]) * (i/steps)
+                dy = p1[1] + (p2[1] - p1[1]) * (i/steps)
+                pygame.draw.circle(self.screen, (15, 15, 20), (int(dx), int(dy)), 3)
 
-        # Controls
-        self.draw_text("< PREV (Left)   |   NEXT (Right) >   |   ESC: Menu", self.small_font, TEXT_SUB, (w//2, h - 20))
+        # Draw Node Highlights
+        for node in getattr(self, 'dead_end_nodes', []):
+            cx, cy = node.c * TILE_SIZE + TILE_SIZE//2, node.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+            pygame.draw.circle(self.screen, (150, 20, 20), (cx, cy), 3) # Small dark red dot
+            
+        for node in self.dfs_sim.visited:
+            cx, cy = node.c * TILE_SIZE + TILE_SIZE//2, node.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+            if node in self.dfs_sim.rejected_nodes:
+                pygame.draw.circle(self.screen, (80, 20, 20, 150), (cx, cy), TILE_SIZE//3) # Polluted darker shade
+            else:
+                pygame.draw.circle(self.screen, (100, 200, 255, 150), (cx, cy), TILE_SIZE//3) # Light blue visited
+            
+        for node in self.dfs_sim.frontier_nodes:
+            cx, cy = node.c * TILE_SIZE + TILE_SIZE//2, node.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+            pygame.draw.circle(self.screen, (255, 255, 100, 150), (cx, cy), TILE_SIZE//4)
+
+        # Draw Current Node
+        if self.dfs_sim.current_node:
+            self.analysis_ui.draw_dead_end_flash(self.dfs_sim.current_node, self.dfs_sim.state, GRID_OFFSET_Y, TILE_SIZE)
+            
+            if self.dfs_sim.state != "DEAD_END":
+                 cx, cy = self.dfs_sim.current_node.c * TILE_SIZE + TILE_SIZE//2, self.dfs_sim.current_node.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                 pygame.draw.circle(self.screen, (0, 255, 255), (cx, cy), TILE_SIZE//2)
+
+        # 4. Minimal UI Panels
+        if not getattr(self, 'show_analysis_mode', False) and not getattr(self, 'show_complexity_mode', False):
+            # Maze Type Indicator
+            m_color = (130, 200, 255) if getattr(self.maze, "maze_type", "") == "STRUCTURED" else (255, 130, 130)
+            self.draw_text(f"Maze Type: {getattr(self.maze, 'maze_type', 'UNKNOWN')}", self.font, m_color, (20, 15), anchor="topleft", shadow=True)
+            
+            if getattr(self.dfs_sim, 'full_exploration_mode', False):
+                self.draw_text("FULL EXPLORATION MODE ACTIVE: Ignoring Goal", self.medium_font, (255, 150, 50), (w//2, 25), shadow=True)
+                self.draw_text("Press F to Toggle Mode", self.small_font, (150, 150, 150), (w//2, 45), shadow=True)
+            
+            # Backtracking Metrics Panel
+            metrics = self.dfs_sim.get_final_statistics()
+            pygame.draw.rect(self.screen, (20, 20, 25, 200), (20, 50, 250, 110), border_radius=5)
+            self.draw_text(f"Backtracks: {metrics['backtracks']}", self.small_font, (200, 200, 200), (30, 60), anchor="topleft", shadow=False)
+            self.draw_text(f"Dead Ends Encountered: {metrics['dead_ends']}", self.small_font, (200, 200, 200), (30, 85), anchor="topleft", shadow=False)
+            self.draw_text(f"Explored Nodes: {metrics['explored']}", self.small_font, (200, 200, 200), (30, 110), anchor="topleft", shadow=False)
+            self.draw_text(f"Efficiency: {metrics['efficiency']}", self.small_font, (200, 200, 200), (30, 135), anchor="topleft", shadow=False)
+            
+            # A. Speed Control (Top Right)
+            speed_rect = pygame.Rect(w - 220, 20, 200, 40)
+            pygame.draw.rect(self.screen, (30, 30, 40), speed_rect, border_radius=5)
+            self.draw_text(f"Speed: {self.sim_speed} (1/2/3 to change)", self.small_font, (200, 200, 200), speed_rect.center, shadow=False)
+            
+            # B. Right Side Minimal Stack Box
+            self.analysis_ui.draw_ai_stack(self.dfs_sim.stack, self.dfs_sim.state, w, h)
+                
+            # C. Decision Log (Bottom Slim Bar)
+            log_h = 40
+            log_y = h - log_h - 20
+            pygame.draw.rect(self.screen, (20, 20, 25, 200), (20, log_y, w - 40, log_h))
+            
+            log_color = (255, 255, 255)
+            if self.dfs_sim.state == "DEAD_END": log_color = (255, 100, 100)
+            elif self.dfs_sim.state == "BACKTRACK": log_color = (255, 150, 150)
+            elif self.dfs_sim.state == "FORWARD": log_color = (150, 255, 150)
+            
+            # Action specific text colored on dark transparent background
+            self.draw_text(self.dfs_sim.decision_log, self.medium_font, log_color, (w//2, log_y + log_h//2), shadow=True)
+        
+        try:
+            # Step Update Logic
+            if self.dfs_sim.state != "FINISHED":
+                # Base delays per user spec
+                delay = 0.4 # Forward move: 400ms
+                if self.sim_speed == "Slow": delay = 0.8
+                elif self.sim_speed == "Fast": delay = 0.1
+                
+                # Apply specific state rules
+                if self.dfs_sim.state == "DEAD_END":
+                    delay = 1.0 # Dead-end pause: 1000ms
+                elif self.dfs_sim.state == "BACKTRACK":
+                    delay = 0.7 # Backtracking delay: 700ms
+                    
+                if time.time() - self.sim_last_step > delay:
+                    self.dfs_sim.step()
+                    self.sim_last_step = time.time()
+        except Exception as e:
+            print(f"Error in step update: {e}")
+            
+        if getattr(self, 'show_analysis_mode', False):
+            metrics = self.dfs_sim.history_metrics
+            current_metric = self.analysis_metric
+            metric_titles = {
+                "nodes": "Cumulative Nodes Explored",
+                "runtime": "Cumulative Runtime (ms)",
+                "backtracks": "Total Backtracks",
+                "stack_depth": "AI Working Stack Depth"
+            }
+            self.analysis_ui.draw_live_analysis_graph(game_w, w, h, metrics, current_metric, metric_titles)
+            
+            if self.dfs_sim.state == "FINISHED":
+                badge_rect = pygame.Rect(0, 0, 300, 45)
+                badge_rect.center = (game_w + (w-game_w)//2, h - 80)
+                pygame.draw.rect(self.screen, (30, 150, 60), badge_rect, border_radius=5)
+                self.draw_text("Simulation Complete", self.medium_font, (255, 255, 255), badge_rect.center, shadow=False)
+                
+        elif getattr(self, 'show_complexity_mode', False):
+            metrics = self.dfs_sim.history_metrics
+            highlight_index = getattr(self, 'complexity_highlight_index', 0)
+            comp_engine = ComplexityEngine(self.maze, metrics)
+            report = comp_engine.generate_complexity_report()
+            
+            self.analysis_ui.draw_complexity_comparison_panel(game_w, w, h, report, metrics, highlight_index)
+            
+        # Draw floating temp warning msg if any
+        if getattr(self, 'temp_msg', ""):
+            if time.time() - self.temp_msg_time < 3: # 3 sec timeout
+                pygame.draw.rect(self.screen, (0, 0, 0), (w//2 - 150, 20, 300, 40))
+                pygame.draw.rect(self.screen, (255, 0, 0), (w//2 - 150, 20, 300, 40), 2)
+                self.draw_text(self.temp_msg, self.medium_font, (255, 100, 100), (w//2, 40), shadow=False)
+            else:
+                self.temp_msg = ""
 
     def draw_replay(self):
-        # Debug Logging
-        # print(f"Replay Frame: {self.replay_index}, History: {len(self.history)}")
-        
-        self.screen.fill(BG_PRIMARY)
-        try:
-            self.draw_grid() # Draws base maze and BFS if enabled
-        except Exception as e:
-            print(f"Draw Grid Error: {e}")
-            raise e
-        
-        if not self.history: return
-
-        # Get state from history
-        state = self.history[self.replay_index]
-        
-        # --- VISUALIZATION LAYERS ---
-        
-        # 1. Graph Representation (Nodes & Edges)
-        if self.show_graph:
-            for r in range(self.maze.height):
-                for c in range(self.maze.width):
-                    node = self.maze.get_node(r, c)
-                    if node.type != '#':
-                        cx = c * TILE_SIZE + TILE_SIZE//2
-                        cy = r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
-                        # Draw Edges
-                        for neighbor in self.maze.get_neighbors(node):
-                            nx = neighbor.c * TILE_SIZE + TILE_SIZE//2
-                            ny = neighbor.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
-                            pygame.draw.line(self.screen, (50, 50, 70), (cx, cy), (nx, ny), 1)
-                        # Draw Node
-                        pygame.draw.circle(self.screen, (80, 80, 100), (cx, cy), 2)
-
-        # 2. AI Search Process (Visited Nodes)
-        if self.show_visited and hasattr(self.ai, 'visited_nodes'):
-            for node in self.ai.visited_nodes:
-                 vx = node.c * TILE_SIZE
-                 vy = node.r * TILE_SIZE + GRID_OFFSET_Y
-                 # Draw a faint blue overlay for visited nodes
-                 s = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-                 s.fill((100, 100, 255, 40)) # Transparent Blue
-                 self.screen.blit(s, (vx, vy))
-                 # Optional: Small dot
-                 # pygame.draw.circle(self.screen, (100, 100, 255), (vx + TILE_SIZE//2, vy + TILE_SIZE//2), 2)
-
-        # 3. Entities
-        # Draw Player
-        pr, pc = state['player_pos']
-        px = pc * TILE_SIZE
-        py = pr * TILE_SIZE + GRID_OFFSET_Y
-        pygame.draw.circle(self.screen, ACCENT_GREEN, (px + TILE_SIZE//2, py + TILE_SIZE//2), TILE_SIZE//3)
-        
-        # Draw AI
-        ar, ac = state['ai_pos']
-        ax = ac * TILE_SIZE
-        ay = ar * TILE_SIZE + GRID_OFFSET_Y
-        pygame.draw.circle(self.screen, ACCENT_ORANGE, (ax + TILE_SIZE//2, ay + TILE_SIZE//2), TILE_SIZE//3)
-        
-        # 4. Greedy Heuristic Lens (AI Path)
-        if self.show_heuristics:
-            path = state['ai_path']
-            if len(path) > 1:
-                points = []
-                for node in path:
-                    points.append((node.c * TILE_SIZE + TILE_SIZE//2, 
-                                   node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2))
-                pygame.draw.lines(self.screen, (255, 100, 100), False, points, 2)
-                
-                # Draw Line to Goal
-                goal_x = self.maze.goal_node.c * TILE_SIZE + TILE_SIZE//2
-                goal_y = self.maze.goal_node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
-                pygame.draw.line(self.screen, (255, 255, 0), (ax + TILE_SIZE//2, ay + TILE_SIZE//2), (goal_x, goal_y), 1)
-
-        # Draw HUD Overlay
         w, h = self.screen.get_size()
-        pygame.draw.rect(self.screen, (0, 0, 0, 200), (0, h-80, w, 80))
         
         progress = (self.replay_index / (len(self.history)-1)) if len(self.history) > 1 else 1
         bar_w = w - 40
@@ -1411,7 +1481,7 @@ class GameController:
         elif keys[pygame.K_e]: dx, dy = -1, 1
         elif keys[pygame.K_z]: dx, dy = 1, -1
         elif keys[pygame.K_c]: dx, dy = 1, 1
-
+        
         if dx != 0 or dy != 0:
             if isinstance(self.maze, CircularMaze):
                 # Strict Graph Movement for Circular Maze
@@ -1515,18 +1585,16 @@ class GameController:
                     
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         w, h = self.screen.get_size()
-                        base_y = h//2 - 30  # Match draw_menu() base_y
-                        options = ["EASY", "MEDIUM", "HARD", "DYNAMIC", "CIRCULAR", INSTRUCTIONS]
+                        buttons = self.get_menu_buttons(w, h)
                         
-                        for i, val in enumerate(options):
-                            y = base_y + i * 70
-                            rect = pygame.Rect(w//2 - 150, y - 30, 300, 60)
+                        for rect, text, val in buttons:
                             if rect.collidepoint(event.pos):
                                 if val == INSTRUCTIONS:
                                     self.state = INSTRUCTIONS
                                     self.instruction_scroll_y = 0
                                 else:
-                                    self.reset_game(val)
+                                    lvl, m_type = val
+                                    self.reset_game(lvl, maze_type=m_type)
                                     self.state = PLAYING
                                     self.start_time = time.time()
 
@@ -1557,6 +1625,8 @@ class GameController:
                     elif event.key == pygame.K_s: # Enable Simulation Mode from Playing
                         self.state = SIMULATION
                         self.prepare_simulation()
+                    elif event.key == pygame.K_u or event.key == pygame.K_BACKSPACE:
+                        self.backtrack()
                     elif event.key == pygame.K_ESCAPE: self.state = MENU
 
                 elif self.state == GRAPH_VIEW and event.type == pygame.KEYDOWN:
@@ -1611,12 +1681,37 @@ class GameController:
                     elif event.key == pygame.K_c: self.show_huffman = not self.show_huffman # Huffman Toggle
 
                 elif self.state == SIMULATION and event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE: self.state = GAME_OVER
-                    elif event.key == pygame.K_RIGHT: 
-                        self.current_sim_index = (self.current_sim_index + 1) % len(self.simulation_agents)
-                    elif event.key == pygame.K_LEFT:
-                        self.current_sim_index = (self.current_sim_index - 1) % len(self.simulation_agents)
-
+                    if event.key == pygame.K_ESCAPE: 
+                        self.state = PLAYING
+                    elif event.key == pygame.K_t:
+                        self.show_analysis_mode = not getattr(self, 'show_analysis_mode', False)
+                    elif event.key == pygame.K_1:
+                        self.sim_speed = "Slow"
+                        if getattr(self, 'show_analysis_mode', False): self.analysis_metric = "nodes"
+                    elif event.key == pygame.K_2:
+                        self.sim_speed = "Normal"
+                        if getattr(self, 'show_analysis_mode', False): self.analysis_metric = "runtime"
+                    elif event.key == pygame.K_3:
+                        self.sim_speed = "Fast"
+                        if getattr(self, 'show_analysis_mode', False): self.analysis_metric = "stack_depth"
+                    elif event.key == pygame.K_4:
+                        if getattr(self, 'show_analysis_mode', False): self.analysis_metric = "backtracks"
+                    elif event.key == pygame.K_c:
+                        if self.dfs_sim.state == "FINISHED":
+                            self.show_complexity_mode = not self.show_complexity_mode
+                            if self.show_complexity_mode:
+                                self.show_analysis_mode = False # Disable standard analysis panel
+                                self.complexity_highlight_index = 0
+                        else:
+                            self.temp_msg = "Complete simulation first."
+                            self.temp_msg_time = time.time()
+                    elif event.key == pygame.K_LEFT and self.show_complexity_mode:
+                        self.complexity_highlight_index = max(0, self.complexity_highlight_index - 1)
+                    elif event.key == pygame.K_RIGHT and self.show_complexity_mode:
+                        # Max bound is the number of red spikes (recorded backtracks)
+                        metrics = self.dfs_sim.history_metrics
+                        backtrack_events = [m for m in metrics if m.get('state') == 'BACKTRACK']
+                        self.complexity_highlight_index = min(max(0, len(backtrack_events) - 1), self.complexity_highlight_index + 1)
 
                 elif self.state == INSTRUCTIONS and event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
@@ -1700,6 +1795,19 @@ class GameController:
                     with open("replay_error.txt", "w") as f:
                         f.write(str(e))
                     self.state = MENU # Exit replay on error
+            
+            elif self.state == SIMULATION:
+                try:
+                    self.draw_simulation()
+                except Exception as e:
+                    print(f"Simulation Render Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    self.state = PLAYING
+                    
+            if self.state in [PLAYING, SIMULATION, REPLAY]: # Draw FPS
+                pass # Optional FPS counter can go here
+
 
             elif self.state == GAME_OVER:
                 self.draw_game_over()
