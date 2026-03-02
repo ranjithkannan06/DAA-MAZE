@@ -9,7 +9,7 @@ class BacktrackingEngine:
     # Responsibility: Traversal Architecture
     # ==========================================
     
-    def _init_(self, start_node, goal_node, maze):
+    def __init__(self, start_node, goal_node, maze):
         self.initialize_engine(start_node, goal_node, maze)
         
     def initialize_engine(self, start_node, goal_node, maze):
