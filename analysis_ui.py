@@ -23,6 +23,26 @@ class AnalysisUI:
             self.screen.blit(sh, sh_rect)
             
         self.screen.blit(surf, rect)
+    # ==== MEMBER 1 SECTION ====
+    # Responsibility: Dead-End Animation Polish
+    # ==========================================
+    
+    def draw_dead_end_flash(self, current_node, status, offset_y, tile_size):
+        """Draws the flashing pulsing red beacon when a dead end is struck."""
+        if current_node and status == "DEAD_END":
+             cx = current_node.c * tile_size + tile_size//2
+             cy = current_node.r * tile_size + tile_size//2 + offset_y
+             
+             # Flash red pulse
+             pulse = int(abs(math.sin(time.time() * 10)) * 255)
+             pygame.draw.circle(self.screen, (pulse, 0, 0), (cx, cy), tile_size//2 + 4)
+             
+             self.draw_text("Dead End Reached", self.fonts['small'], (255, 100, 100), (cx, cy - tile_size), shadow=True)
+             
+             # Dark red circle with X
+             pygame.draw.circle(self.screen, (100, 0, 0), (cx, cy), tile_size//2)
+             pygame.draw.line(self.screen, (255, 255, 255), (cx-5, cy-5), (cx+5, cy+5), 2)
+             pygame.draw.line(self.screen, (255, 255, 255), (cx-5, cy+5), (cx+5, cy-5), 2)
          
     # ==========================================
     # ==== MEMBER 2 SECTION ====
