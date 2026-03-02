@@ -57,6 +57,35 @@ class ComplexityEngine:
         ds = steps[-1] - steps[0]
         
         return dr / ds if ds > 0 else 0.0
+# ==========================================
+    # ==== MEMBER 3 SECTION ====
+    # Responsibility: Growth Pattern Estimation
+    # ==========================================
+    
+    def estimate_complexity_class(self):
+        """Fits observed growth vectors to logical complexity classes."""
+        steps, _, nodes = self.collect_runtime_data()
+        
+        if len(steps) < 10:
+            return "Linear (Insufficient Data)"
+            
+        # In highly structured mazes, DFS acts linearly (few branches)
+        # In backtracking mazes, stack pushing/popping causes quadratic scaling loops
+        total_backtracks = len([m for m in self.history_metrics if m['state'] == 'BACKTRACK'])
+        
+        if total_backtracks > (len(steps) * 0.1): # Over 10% of path is backtracking
+            return "Quadratic"
+        else:
+            return "Linear"
+
+    def compare_modes(self):
+        """Asserts differences in computational stress between generating algorithms."""
+        growth_class = self.estimate_complexity_class()
+        maze_type = getattr(self.maze, 'maze_type', 'UNKNOWN')
+        
+        if maze_type == "BACKTRACKING":
+             assert growth_class == "Quadratic", "Backtracking maze failed to induce quadratic stress."
+        return True
     
 
 
