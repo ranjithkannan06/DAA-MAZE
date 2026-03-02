@@ -7,6 +7,26 @@ class ComplexityEngine:
     def __init__(self, maze, history_metrics):
         self.maze = maze
         self.history_metrics = history_metrics
+
+    # ==== MEMBER 1 SECTION ====
+    # Responsibility: Theoretical Complexity Layer
+    # ==========================================
+    
+    def compute_theoretical_complexity(self):
+        """Standard DFS Big-O Notation Proof."""
+        return "O(V + E)"
+        
+    def derive_grid_complexity(self):
+        """Converts raw DFS theory into physical Grid node scaling."""
+        n_val = max(self.maze.width, self.maze.height)
+        v = n_val ** 2
+        e = 4 * v # Max 4 edges per node in grid graph
+        return {
+            "n": n_val,
+            "v_approx": v,
+            "e_approx": e,
+            "final_o": "O(n²)"
+        }
 # ==========================================
 # ==== MEMBER 2 SECTION ====
 # Responsibility: Empirical Runtime Collection
