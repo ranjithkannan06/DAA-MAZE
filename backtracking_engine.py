@@ -5,6 +5,56 @@ class BacktrackingEngine:
     Core DFS Simulation Engine.
     Refactored to distribute architectural logic across 4 team members.
     """
+# ==== MEMBER 1 SECTION ====
+    # Responsibility: Traversal Architecture
+    # ==========================================
+    
+    def _init_(self, start_node, goal_node, maze):
+        self.initialize_engine(start_node, goal_node, maze)
+        
+    def initialize_engine(self, start_node, goal_node, maze):
+        self.maze = maze
+        self.start_node = start_node
+        self.goal_node = goal_node
+        
+        # Stack structure: list of (node, parent_node) to trace edges
+        self.stack = [(start_node, None)]
+        self.visited = set()
+        self.current_node = start_node
+        self.path = []
+        
+        # State control
+        self.state = "IDLE" # IDLE, FORWARD, DEAD_END, BACKTRACK, FINISHED
+        self.decision_log = "Simulation Initialized. Press S to start."
+        self.full_exploration_mode = False
+        
+        # Cross-member tracking setups
+        self.frontier_nodes = set()
+        self.backtrack_edges = []
+        self.forward_edges = []
+        self.rejected_edges = set()
+        self.rejected_nodes = set()
+        
+        # Initialize Metrics (Member 4)
+        self.start_time = time.time()
+        self.step_count = 0
+        self.backtrack_count = 0
+        self.dead_ends_encountered = 0
+        self.history_metrics = []
+
+    def select_next_node(self):
+        """Pops the next valid unvisited node from the DFS stack."""
+        if not self.stack:
+            return None, None
+            
+        next_node, parent = self.stack.pop()
+        return next_node, parent
+
+    def check_goal_reached(self):
+        """Checks termination condition against exploration mode."""
+        if self.current_node == self.goal_node and not self.full_exploration_mode:
+            return True
+        return False
 # ==========================================
 # ==== MEMBER 2 SECTION ====
 # Responsibility: State Machine & Dead-End Control
