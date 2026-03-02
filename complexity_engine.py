@@ -57,4 +57,37 @@ class ComplexityEngine:
         ds = steps[-1] - steps[0]
         
         return dr / ds if ds > 0 else 0.0
+    
+
+
+
+    # ==========================================
+    # ==== MEMBER 4 SECTION ====
+    # Responsibility: Presentation Logic
+    # ==========================================
+    
+    def summarize_results(self):
+        """Collates cross-member theory layers into a consolidated summary."""
+        growth = self.estimate_complexity_class()
+        theo = self.derive_grid_complexity()['final_o']
+        
+        return {
+            "structure": "Tree-like" if getattr(self.maze, 'maze_type', 'UNKNOWN') == "BACKTRACKING" else "Cyclic/Open",
+            "traversal": "DFS",
+            "growth": growth,
+            "conclusion": theo
+        }
+        
+    def generate_complexity_report(self):
+        """Packages up statistics arrays and mathematical strings for the UI."""
+        if not self.history_metrics:
+            return None
+            
+        return {
+            "theory_label": self.compute_theoretical_complexity(),
+            "grid_theory": self.derive_grid_complexity(),
+            "slope_intensity": self.calculate_growth_curve(),
+            "growth_class": self.estimate_complexity_class(),
+            "final_summary": self.summarize_results()
+        }
         
