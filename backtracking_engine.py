@@ -155,6 +155,35 @@ class BacktrackingEngine:
                 self.current_node = new_curr
                 self.decision_log = f"Popping ({prev_node.r}, {prev_node.c}) - Returning to parent ({new_curr.r}, {new_curr.c})"
     
+  # ==========================================
+    # ==== MEMBER 3 SECTION ====
+    # Responsibility: Behavior Optimization & Heuristics
+    # ==========================================
+
+    def compute_branch_priority(self, n):
+        """Computes priority value. Used for injecting backtracking intensity."""
+        return self.maze.heuristic(n, 'manhattan')
+
+    def adjust_exploration_order(self, valid_neighbors):
+        """Prioritizes neighbor exploration order based on required depth intensity."""
+        self.frontier_nodes = set()
+        
+        # Inject branch logic to guarantee deep false trees are traversed
+        should_reverse = self.control_dead_end_density()
+            
+        valid_neighbors.sort(key=self.compute_branch_priority, reverse=should_reverse)
+        
+        for neighbor in valid_neighbors:
+            self.frontier_nodes.add(neighbor)
+            self.stack.append((neighbor, self.current_node))
+            
+    def control_dead_end_density(self):
+        """Forces true DFS to run into dead ends by prioritizing nodes farthest from the goal."""
+        # Standard greedy moves towards the goal. Inverse moves away into dead zones first.
+        is_backtracking_maze = getattr(self.maze, 'maze_type', None) == "BACKTRACKING"
+        # Return True for standard (greedy sort puts lowest at the end of the stack to be popped first).
+        # Return False to invert the stack logic, plunging the AI into the deepest dead ends first.
+        return False if is_backtracking_maze else True
 
 
 
