@@ -31,6 +31,7 @@ SIMULATION = 5
 GRAPH_VIEW = 6
 VISUALIZE_LOGIC = 7
 DP_SIMULATION = 8  # J key - Animated DP computation visualization
+DC_REPLAY = 9  # D key - Synchronized D&C Replay
 
 # Constants
 TILE_SIZE = 30
@@ -92,6 +93,13 @@ class GameController:
         self.max_scroll = 0
         self.scrollbar_grabbed = False
         self.last_move_time = 0
+
+        # DC Simulation State
+        self.dc_sim_stage = 0
+        self.dc_sim_timer = 0
+        self.dc_sim_target_block = None
+        self.dc_sim_change_type = ""
+        self.dc_sim_change_node = None
 
         # Initialize UI Component
         fonts_dict = {
@@ -234,7 +242,8 @@ class GameController:
             self.maze = CircularMaze(num_rings=4, sectors=12)
             print("CircularMaze Generated.")
         else:
-            self.maze = Maze(width=w, height=h, maze_type=maze_type)
+            self.maze = Maze(width=w, height=h)
+            self.maze.maze_type = maze_type
         print("Maze Generated")
         print("Maze Generated")
         pygame.event.pump()
@@ -1400,6 +1409,198 @@ class GameController:
             else:
                 self.temp_msg = ""
 
+    def prepare_dc_replay(self):
+        """Prepare Synchronized Dynamic Divide & Conquer Replay state."""
+        if not hasattr(self.maze, 'blocks'):
+            self.temp_msg = "Current level does not support D&C Replay."
+            self.temp_msg_time = time.time()
+            self.state = PLAYING
+            return
+            
+        if not self.history:
+            self.temp_msg = "No history available to replay."
+            self.temp_msg_time = time.time()
+            self.state = PLAYING
+            return
+
+        self.dc_sim_stage = 0
+        self.dc_sim_timer = 0
+        self.replay_index = 0
+        self.replay_speed = 0.5
+        
+        # Reset maze completely to evaluate dynamic replay correctly
+        # The true "Replay" mode handles purely visual coords, but for D&C we just re-run the trace.
+        for node in getattr(self.maze, 'nodes', getattr(self.maze, 'grid', [])):
+            if type(node) is list:
+                for n in node: 
+                    if n.type == '.' or n.type == '#': n.cost = 1 if n.type == '.' else float('inf')
+            else:
+                pass # Support flattened if needed
+
+    def draw_dc_replay(self):
+        """Draws the Synchronized D&C Replay Step-by-Step Simulation Overlay."""
+        w, h = self.screen.get_size()
+        
+        # Get the current frame from history
+        if self.replay_index >= len(self.history):
+            self.replay_index = len(self.history) - 1
+            
+        current_frame = self.history[self.replay_index]
+        is_dynamic_event = current_frame.get('type') == 'DYNAMIC_CHANGE'
+
+        # 1. Background Rendering (Standard Replay rendering from history)
+        # We need to manually draw the maze and entities based on the history state 
+        # because normal draw_replay() advances timers automatically.
+        self.screen.fill(BG_PRIMARY)
+        self.draw_grid()
+
+        # If it's a normal frame, draw players
+        if not is_dynamic_event:
+            p_state = current_frame.get('player')
+            a_state = current_frame.get('ai')
+            
+            if p_state and p_state.get('node'):
+                cx = p_state['node'].c * TILE_SIZE + TILE_SIZE//2
+                cy = p_state['node'].r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                pygame.draw.circle(self.screen, ACCENT_BLUE, (cx, cy), TILE_SIZE//2 - 2)
+            
+            if a_state and a_state.get('node'):
+                cx = a_state['node'].c * TILE_SIZE + TILE_SIZE//2
+                cy = a_state['node'].r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                pygame.draw.circle(self.screen, ACCENT_RED, (cx, cy), TILE_SIZE//2 - 4)
+
+            # Draw static grid overlay for "Divide" context
+            for key, block in self.maze.blocks.items():
+                bx = block['c_start'] * TILE_SIZE
+                by = block['r_start'] * TILE_SIZE + GRID_OFFSET_Y
+                bw = (block['c_end'] - block['c_start']) * TILE_SIZE
+                bh = (block['r_end'] - block['r_start']) * TILE_SIZE
+                pygame.draw.rect(self.screen, (100, 100, 150), (bx, by, bw, bh), 2)
+                
+            self.draw_text("Divide Phase: Partitioning Maze into Micro-Blocks", self.medium_font, ACCENT_BLUE, (w//2, 30))
+
+        # 2. Dynamic Event Handling (Pauses replay progression)
+        if is_dynamic_event:
+            node = current_frame['node']
+            change_type = current_frame['change_type']
+            
+            # Find which block the node belongs to
+            target_block = None
+            target_key = None
+            for key, block in self.maze.blocks.items():
+                if node in block['nodes']:
+                    target_block = block
+                    target_key = key
+                    break
+                    
+            if not target_block:
+                # Fallback if somehow node isn't strictly in a block
+                self.dc_sim_stage = 4
+                
+            # If we just started the event
+            if self.dc_sim_stage == 0:
+                self.dc_sim_timer = time.time()
+                self.dc_sim_stage = 1
+                
+            elapsed = time.time() - self.dc_sim_timer
+
+            # Phase 2: Dynamic Change Flash (0-2s)
+            if self.dc_sim_stage == 1:
+                if elapsed > 2.0:
+                    self.dc_sim_stage = 2
+                    self.dc_sim_timer = time.time()
+                else:
+                    br, bc = target_key
+                    self.draw_text(f"Dynamic Change Detected in Block {br}, {bc}", self.large_font, ACCENT_RED, (w//2, 30))
+                    
+                    for key, block in self.maze.blocks.items():
+                        bx = block['c_start'] * TILE_SIZE
+                        by = block['r_start'] * TILE_SIZE + GRID_OFFSET_Y
+                        bw = (block['c_end'] - block['c_start']) * TILE_SIZE
+                        bh = (block['r_end'] - block['r_start']) * TILE_SIZE
+                        
+                        if key == target_key:
+                            pygame.draw.rect(self.screen, ACCENT_RED, (bx, by, bw, bh), 4)
+                            # Flash the specific node
+                            pulse = (math.sin(elapsed * 15) + 1) * 0.5
+                            alpha = int(200 * pulse)
+                            s = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                            color = (255, 0, 0, alpha) if change_type == 'ADD_WALL' else (0, 255, 0, alpha)
+                            s.fill(color)
+                            self.screen.blit(s, (node.c * TILE_SIZE, node.r * TILE_SIZE + GRID_OFFSET_Y))
+                        else:
+                            pygame.draw.rect(self.screen, (80, 80, 100), (bx, by, bw, bh), 1)
+
+            # Phase 3: Conquer Phase - Dim & Scan (0-2s)
+            elif self.dc_sim_stage == 2:
+                if elapsed > 2.0:
+                    self.dc_sim_stage = 3
+                    self.dc_sim_timer = time.time()
+                else:
+                    self.draw_text("Conquer Phase: Local Recalculation in Block", self.large_font, ACCENT_ORANGE, (w//2, 30))
+                    
+                    # Dim all other blocks
+                    s = pygame.Surface((w, h), pygame.SRCALPHA)
+                    s.fill((0, 0, 0, 210))
+                    
+                    bx = target_block['c_start'] * TILE_SIZE
+                    by = target_block['r_start'] * TILE_SIZE + GRID_OFFSET_Y
+                    bw = (target_block['c_end'] - target_block['c_start']) * TILE_SIZE
+                    bh = (target_block['r_end'] - target_block['r_start']) * TILE_SIZE
+                    pygame.draw.rect(s, (0, 0, 0, 0), (bx, by, bw, bh)) 
+                    self.screen.blit(s, (0, 0))
+                    
+                    pygame.draw.rect(self.screen, ACCENT_ORANGE, (bx, by, bw, bh), 4)
+                    # Node scan pulse
+                    for n in target_block['nodes']:
+                        cx, cy = n.c * TILE_SIZE + TILE_SIZE//2, n.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                        pygame.draw.circle(self.screen, ACCENT_ORANGE, (cx, cy), 3)
+
+            # Phase 4: Combine Phase - Boundary Stitching (0-2s)
+            elif self.dc_sim_stage == 3:
+                if elapsed > 2.0:
+                    self.dc_sim_stage = 4
+                else:
+                    self.draw_text("Combine Phase: Updating Inter-Block Connections", self.large_font, ACCENT_GREEN, (w//2, 30))
+                    
+                    bx = target_block['c_start'] * TILE_SIZE
+                    by = target_block['r_start'] * TILE_SIZE + GRID_OFFSET_Y
+                    bw = (target_block['c_end'] - target_block['c_start']) * TILE_SIZE
+                    bh = (target_block['r_end'] - target_block['r_start']) * TILE_SIZE
+                    pygame.draw.rect(self.screen, ACCENT_GREEN, (bx, by, bw, bh), 4)
+                    
+                    # Draw glowing lines connecting outside nodes exactly at boundaries
+                    for n in target_block['nodes']:
+                        for neighbor in self.maze.get_neighbors(n):
+                            if neighbor not in target_block['nodes']:
+                                cx1, cy1 = n.c * TILE_SIZE + TILE_SIZE//2, n.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                                cx2, cy2 = neighbor.c * TILE_SIZE + TILE_SIZE//2, neighbor.r * TILE_SIZE + TILE_SIZE//2 + GRID_OFFSET_Y
+                                pulse = (math.sin(elapsed * 20) + 1) * 0.5
+                                # Adjust line thickness dynamically
+                                thickness = int(2 + 4 * pulse)
+                                pygame.draw.line(self.screen, (100 + 155*pulse, 255, 100 + 155*pulse), (cx1, cy1), (cx2, cy2), thickness)
+
+            # Phase Complete - Advance Replay Automatically
+            elif self.dc_sim_stage == 4:
+                # Apply structural visual change on grid so it persists later in regular drawing
+                if change_type == 'ADD_WALL':
+                    node.type = '#'
+                    node.cost = float('inf')
+                else:
+                    node.type = '.'
+                    node.cost = 1
+                self.dc_sim_stage = 0
+                self.replay_index += 1 # Auto-advance past the pause
+                
+        # 3. Standard Progress Bar Overlay
+        progress = (self.replay_index / max(1, len(self.history)-1))
+        bar_w = w - 40
+        pygame.draw.rect(self.screen, (100, 100, 100), (20, h-60, bar_w, 10))
+        pygame.draw.rect(self.screen, ACCENT_CYAN, (20, h-60, bar_w * progress, 10))
+        self.draw_text(f"D&C REPLAY | Frame: {self.replay_index}/{len(self.history)-1} | Speed: {self.replay_speed}x", self.small_font, TEXT_MAIN, (w//2, h-35))
+        self.draw_text("Space: Pause | Arrows: Seek | Modifies Real Maze Visually", self.small_font, TEXT_SUB, (w//2, h-15))
+
+
     def draw_replay(self):
         w, h = self.screen.get_size()
         
@@ -1528,6 +1729,15 @@ class GameController:
                     if self.maze.process_updates(dt):
                         print("Structure Updated! Re-calculating AI path...")
                         self.ai.compute_path()
+                        if getattr(self.maze, 'last_event_node', None):
+                            # Inject dynamic change into history for synchronized DC_REPLAY playback
+                            node = self.maze.last_event_node
+                            change_type = 'REMOVE_WALL' if node.type == '.' else 'ADD_WALL'
+                            self.history.append({
+                                'type': 'DYNAMIC_CHANGE',
+                                'node': node,
+                                'change_type': change_type
+                            })
                 elif isinstance(self.maze, CircularMaze):
                     self.maze.update(dt) # Continuous rotation
                     # Run DP every frame for glow or less frequently?
@@ -1625,6 +1835,9 @@ class GameController:
                     elif event.key == pygame.K_s: # Enable Simulation Mode from Playing
                         self.state = SIMULATION
                         self.prepare_simulation()
+                    elif event.key == pygame.K_d: # Enable DC Replay Mode
+                        self.state = DC_REPLAY
+                        self.prepare_dc_replay()
                     elif event.key == pygame.K_u or event.key == pygame.K_BACKSPACE:
                         self.backtrack()
                     elif event.key == pygame.K_ESCAPE: self.state = MENU
@@ -1662,6 +1875,9 @@ class GameController:
                     elif event.key == pygame.K_s:
                         self.state = SIMULATION
                         self.prepare_simulation()
+                    elif event.key == pygame.K_d:
+                        self.state = DC_REPLAY
+                        self.prepare_dc_replay()
 
 
                 elif self.state == REPLAY and event.type == pygame.KEYDOWN:
@@ -1713,6 +1929,10 @@ class GameController:
                         backtrack_events = [m for m in metrics if m.get('state') == 'BACKTRACK']
                         self.complexity_highlight_index = min(max(0, len(backtrack_events) - 1), self.complexity_highlight_index + 1)
 
+                elif self.state == DC_REPLAY and event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.state = PLAYING
+                
                 elif self.state == INSTRUCTIONS and event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                         self.state = MENU
@@ -1804,8 +2024,27 @@ class GameController:
                     import traceback
                     traceback.print_exc()
                     self.state = PLAYING
+
+            elif self.state == DC_REPLAY:
+                try:
+                    self.draw_dc_replay()
+                    # Custom progress advancement ignoring visual pauses
+                    if self.replay_speed > 0 and self.dc_sim_stage == 0:
+                        speed_factor = int(self.replay_speed * 5 + 1)
+                        if frame_count % max(1, 60 // speed_factor) == 0:
+                            if self.replay_index < len(self.history):
+                                # Peek next step, if it's dynamic event, halt progression
+                                if self.replay_index + 1 < len(self.history) and self.history[self.replay_index + 1].get('type') == 'DYNAMIC_CHANGE':
+                                    self.replay_index += 1 # Move onto the event to trigger pause
+                                else:
+                                    self.replay_index = min(len(self.history)-1, self.replay_index + 1)
+                except Exception as e:
+                    print(f"DC Replay Render Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    self.state = PLAYING
                     
-            if self.state in [PLAYING, SIMULATION, REPLAY]: # Draw FPS
+            if self.state in [PLAYING, SIMULATION, DC_REPLAY, REPLAY]: # Draw FPS
                 pass # Optional FPS counter can go here
 
 

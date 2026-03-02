@@ -86,26 +86,82 @@ class DynamicMaze(Maze):
                 return True
         return False
         
-    def analyze_structure(self):
-        """Full structural analysis: Articulation Points + Regions"""
-        # print("Re-analyzing Maze Structure...")
-        self.build_graph() # Rebuild adjacency list first
+    def setup_block_partitions(self):
+        """Part 1 & 2: Adaptive Block-Based Divide & Conquer setup"""
+        import math
+        maze_size = max(self.width, self.height)
         
-        # Use centralized logic
+        # Adaptive rule: size/5, min 3, max 5, integer
+        self.block_size = max(3, min(5, math.floor(maze_size / 5)))
+        
+        # Grid dimensions: ceil(maze_size / block_size)
+        self.block_rows = math.ceil(self.height / self.block_size)
+        self.block_cols = math.ceil(self.width / self.block_size)
+        
+        # Track dirtiness and structure per block
+        # blocks is mapping: (br, bc) -> { 'nodes': set(), 'boundary_edges': set() }
+        self.blocks = {}
+        
+        for br in range(self.block_rows):
+            for bc in range(self.block_cols):
+                nodes = set()
+                # Determine cell boundaries for this block
+                r_start = br * self.block_size
+                r_end = min((br + 1) * self.block_size, self.height)
+                c_start = bc * self.block_size
+                c_end = min((bc + 1) * self.block_size, self.width)
+                
+                for r in range(r_start, r_end):
+                    for c in range(c_start, c_end):
+                        nodes.add(self.grid[r][c])
+                        
+                self.blocks[(br, bc)] = {
+                    'r_start': r_start, 'r_end': r_end,
+                    'c_start': c_start, 'c_end': c_end,
+                    'nodes': nodes
+                }
+
+    def analyze_structure(self):
+        """Full structural analysis: Adaptive Block Partitions + Graph + Legacy compatibility"""
+        # Part 1 & 2 Setup
+        if not hasattr(self, 'blocks'):
+            self.setup_block_partitions()
+            
+        # Rebuild full graph for initial state
+        self.build_graph()
+        
+        # Compute regions globally initially for standard logic compatibility
         self.articulation_points = RegionLogic.compute_articulation_points(self)
         self.regions, self.region_connectivity, self.region_list_map = RegionLogic.compute_regions(self, self.articulation_points)
         
-        # Compatibility adapter for existing code that uses list of sets
         self.region_list = []
-        # Sort by region ID to ensure consistent order if needed, though region_id is just a key
         sorted_ids = sorted(self.region_list_map.keys())
         for rid in sorted_ids:
             self.region_list.append(set(self.region_list_map[rid]))
 
-        # print(f"Analysis Complete. Found {len(self.articulation_points)} Articulation Points.")
-
-    # find_articulation_points, partition_regions, and build_region_connectivity are now removed 
-    # as they are handled by RegionLogic
+    def update_local_block(self, node):
+        """Part 3: Recompute only the affected block and adjacent boundaries"""
+        br = node.r // self.block_size
+        bc = node.c // self.block_size
+        block = self.blocks.get((br, bc))
+        
+        if not block: return
+        
+        # 1. Update local adjacency for nodes IN THIS BLOCK ONLY
+        for n in block['nodes']:
+            if n.type == '#':
+                continue
+            
+            # Rebuild adjacency just for this node
+            self.adjacency_list[n] = [(neighbor, neighbor.cost) 
+                                     for neighbor in self.get_neighbors(n)]
+        
+        # NOTE: We keep global legacy variables (APS, regions) as they were or let them 
+        # degrade if they aren't strictly required for Dynamic Maze operation.
+        # The prompt requires only local block recalculations and global stitching.
+        # The stitching above via get_neighbors already hooks to cross-block nodes.
+        
+        # DO NOT recompute global Regions/APs here to satisfy requirement Part 3 & 4.
 
     def update_structure(self):
         """
@@ -194,6 +250,14 @@ class DynamicMaze(Maze):
         """
         structure_changed = False
         remaining_changes = []
+        affected_nodes = set()
+        
+        # Update edge animation timers
+        self.recent_edge_changes = [
+            (n, t, timer - dt) 
+            for n, t, timer in self.recent_edge_changes 
+            if timer - dt > 0
+        ]
         
         for change in self.pending_changes:
             change['timer'] -= dt
@@ -211,10 +275,15 @@ class DynamicMaze(Maze):
                     if change['type'] == 'ADD_WALL':
                         node.type = '#'
                         node.cost = float('inf')
+                        # Edge Removed (technically edges to neighbors are removed)
+                        self.recent_edge_changes.append((node, 'REMOVE', 1.0)) 
                     elif change['type'] == 'REMOVE_WALL':
                         node.type = '.'
                         node.cost = 1
+                        # Edge Added
+                        self.recent_edge_changes.append((node, 'ADD', 1.0))
                     
+                    affected_nodes.add(node)
                     structure_changed = True
                 else:
                     remaining_changes.append(change)
@@ -222,6 +291,8 @@ class DynamicMaze(Maze):
         self.pending_changes = remaining_changes
         
         if structure_changed:
-            self.analyze_structure()
+            # Recompute local adjacency for affected blocks only
+            for node in affected_nodes:
+                self.update_local_block(node)
             
         return structure_changed

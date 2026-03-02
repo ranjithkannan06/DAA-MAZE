@@ -1,10 +1,10 @@
 Traceback (most recent call last):
-  File "d:\daa\DAA-MAZE\main.py", line 960, in <module>
+  File "/Users/vidyadhar/Downloads/daa_final_3rd/DAA-MAZE/main.py", line 2003, in <module>
     game.run()
-    ~~~~~~~~^^
-  File "d:\daa\DAA-MAZE\main.py", line 954, in run
-    sys.exit()
-    ~~~~~~~~^^
-SystemExit
+  File "/Users/vidyadhar/Downloads/daa_final_3rd/DAA-MAZE/main.py", line 1826, in run
+    self.prepare_simulation()
+  File "/Users/vidyadhar/Downloads/daa_final_3rd/DAA-MAZE/main.py", line 1193, in prepare_simulation
+    self.dfs_sim = BacktrackingEngine(self.maze.start_node, self.maze.goal_node, self.maze)
+TypeError: BacktrackingEngine() takes no arguments
 
-Exception: 
+Exception: BacktrackingEngine() takes no arguments
