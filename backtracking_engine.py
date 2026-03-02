@@ -154,4 +154,53 @@ class BacktrackingEngine:
                 self.rejected_edges.add(edge)
                 self.current_node = new_curr
                 self.decision_log = f"Popping ({prev_node.r}, {prev_node.c}) - Returning to parent ({new_curr.r}, {new_curr.c})"
-                
+    
+
+
+
+
+
+    # ==========================================
+    # ==== MEMBER 4 SECTION ====
+    # Responsibility: Metrics Collection
+    # ==========================================
+
+    def update_metrics(self):
+        """Records runtime scaling analytics per step."""
+        self.step_count += 1
+        runtime_ms = (time.time() - self.start_time) * 1000
+        
+        # Check active edge for complexity viz tracking
+        current_edge = None
+        if self.state == "BACKTRACK" and self.backtrack_edges:
+           current_edge = self.backtrack_edges[-1]
+        
+        snapshot = {
+            "step": self.step_count,
+            "runtime": runtime_ms,
+            "nodes": len(self.visited),
+            "backtracks": self.backtrack_count,
+            "stack_depth": len(self.stack),
+            "state": self.state,
+            "edge": current_edge
+        }
+        self.history_metrics.append(snapshot)
+
+    def record_backtrack_event(self):
+        """Increments backtrack collision counters."""
+        self.backtrack_count += 1
+
+    def get_final_statistics(self):
+        """Computes terminal graph search efficiency."""
+        explored = len(self.visited)
+        efficiency = 0
+        if explored > 0:
+            opt = getattr(self.maze, 'optimal_path_length', 1)
+            efficiency = min(100, (opt / explored) * 100)
+            
+        return {
+            "backtracks": self.backtrack_count,
+            "dead_ends": self.dead_ends_encountered,
+            "explored": explored,
+            "efficiency": f"{efficiency:.1f}%"
+        }
