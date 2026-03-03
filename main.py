@@ -1705,6 +1705,78 @@ class GameController:
     def draw_replay(self):
         w, h = self.screen.get_size()
         
+        self.screen.fill(BG_PRIMARY)
+        try:
+            self.draw_grid() # Draws base maze and BFS if enabled
+        except Exception as e:
+            print(f"Draw Grid Error: {e}")
+            raise e
+        
+        if not self.history: return
+
+        # Get state from history
+        state = self.history[self.replay_index]
+        
+        # --- VISUALIZATION LAYERS ---
+        
+        # 1. Graph Representation (Nodes & Edges)
+        if getattr(self, 'show_graph', False):
+            for r in range(self.maze.height):
+                for c in range(self.maze.width):
+                    node = self.maze.get_node(r, c)
+                    if node and node.type != '#':
+                        cx = c * TILE_SIZE + TILE_SIZE//2
+                        cy = r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
+                        # Draw Edges
+                        for neighbor in self.maze.get_neighbors(node):
+                            nx = neighbor.c * TILE_SIZE + TILE_SIZE//2
+                            ny = neighbor.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
+                            pygame.draw.line(self.screen, (50, 50, 70), (cx, cy), (nx, ny), 1)
+                        # Draw Node
+                        pygame.draw.circle(self.screen, (80, 80, 100), (cx, cy), 2)
+
+        # 2. AI Search Process (Visited Nodes)
+        if getattr(self, 'show_visited', False) and hasattr(self.ai, 'visited_nodes'):
+            for node in self.ai.visited_nodes:
+                 vx = node.c * TILE_SIZE
+                 vy = node.r * TILE_SIZE + GRID_OFFSET_Y
+                 s = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                 s.fill((100, 100, 255, 40)) # Transparent Blue
+                 self.screen.blit(s, (vx, vy))
+
+        # 3. Entities
+        # Draw Player
+        if 'player' in state and 'node' in state['player']:
+            p_node = state['player']['node']
+            px = p_node.c * TILE_SIZE
+            py = p_node.r * TILE_SIZE + GRID_OFFSET_Y
+            pygame.draw.circle(self.screen, ACCENT_GREEN, (px + TILE_SIZE//2, py + TILE_SIZE//2), TILE_SIZE//3)
+            
+        # Draw AI
+        if 'ai' in state and 'node' in state['ai']:
+            a_node = state['ai']['node']
+            ax = a_node.c * TILE_SIZE
+            ay = a_node.r * TILE_SIZE + GRID_OFFSET_Y
+            pygame.draw.circle(self.screen, ACCENT_ORANGE, (ax + TILE_SIZE//2, ay + TILE_SIZE//2), TILE_SIZE//3)
+            
+            # 4. Greedy Heuristic Lens (AI Path)
+            if getattr(self, 'show_heuristics', False) and 'path' in state['ai']:
+                path = state['ai']['path']
+                if len(path) > 1:
+                    points = []
+                    for node in path:
+                        points.append((node.c * TILE_SIZE + TILE_SIZE//2, 
+                                       node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2))
+                    pygame.draw.lines(self.screen, (255, 100, 100), False, points, 2)
+                    
+                    # Draw Line to Goal
+                    goal_x = self.maze.goal_node.c * TILE_SIZE + TILE_SIZE//2
+                    goal_y = self.maze.goal_node.r * TILE_SIZE + GRID_OFFSET_Y + TILE_SIZE//2
+                    pygame.draw.line(self.screen, (255, 255, 0), (ax + TILE_SIZE//2, ay + TILE_SIZE//2), (goal_x, goal_y), 1)
+
+        # Draw HUD Overlay
+        pygame.draw.rect(self.screen, (0, 0, 0, 200), (0, h-80, w, 80))
+        
         progress = (self.replay_index / (len(self.history)-1)) if len(self.history) > 1 else 1
         bar_w = w - 40
         pygame.draw.rect(self.screen, (100, 100, 100), (20, h-60, bar_w, 10))
