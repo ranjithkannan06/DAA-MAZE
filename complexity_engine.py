@@ -103,7 +103,7 @@ class ComplexityEngine:
         return {
             "structure": "Tree-like" if getattr(self.maze, 'maze_type', 'UNKNOWN') == "BACKTRACKING" else "Cyclic/Open",
             "traversal": "DFS",
-            "growth": growth,
+            "growth": "Linear (per run)",
             "conclusion": theo
         }
         

@@ -146,6 +146,7 @@ class BacktrackingEngine:
             self.decision_log = f"Exploring new branch from ({r}, {c})"
         else:
             prev_node = self.path.pop()
+            self.backtrack_count += 1  # Increment ONLY on actual reverse traversal
             self.rejected_nodes.add(prev_node)
             if self.path:
                 new_curr = self.path[-1]
@@ -216,8 +217,8 @@ class BacktrackingEngine:
         self.history_metrics.append(snapshot)
 
     def record_backtrack_event(self):
-        """Increments backtrack collision counters."""
-        self.backtrack_count += 1
+        """Called when a dead end is logged, but actual backtrack count happens during pop."""
+        pass
 
     def get_final_statistics(self):
         """Computes terminal graph search efficiency."""
